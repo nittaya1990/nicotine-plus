@@ -5,6 +5,8 @@ on: [push, pull_request]
 jobs:
 
   ubuntu:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -73,6 +75,8 @@ jobs:
           python3 -m unittest
 
   macos:
+    permissions:
+      contents: read
     runs-on: macos-latest
     strategy:
       matrix:
