@@ -1,55 +1,83 @@
 # Nicotine+
 
-<img src="pynicotine/gtkgui/icons/hicolor/scalable/apps/org.nicotine_plus.Nicotine.svg" align="right" width="128" style="margin: 0 10px">
+<img src="data/icons/icon.svg" alt="Nicotine+ Logo" align="right"
+ width="128" height="128">
 
-Nicotine+ is a graphical client for the [Soulseek](https://www.slsknet.org/news/) peer-to-peer network.
+Nicotine+ is a graphical client for the [Soulseek](https://www.slsknet.org/news/)
+peer-to-peer network.
 
-Nicotine+ aims to be a pleasant, free and open source (FOSS) alternative to the official Soulseek client, providing additional functionality while keeping current with the Soulseek protocol.
+Nicotine+ aims to be a lightweight, pleasant, free and open source (FOSS)
+alternative to the official Soulseek client, while also providing a
+comprehensive set of features.
 
-Nicotine+ uses GTK for its graphical user interface, and is written in Python.
+Nicotine+ is written in Python and uses GTK for its graphical user interface.
 
-Check out the [screenshots](data/screenshots/SCREENSHOTS.md) and [source code](https://github.com/nicotine-plus/nicotine-plus).
-<br clear="right">
+Check out the [screenshots](data/screenshots/SCREENSHOTS.md)
+and [source code](https://github.com/nicotine-plus/nicotine-plus).
 
-# Download Nicotine+
 
-The current stable version of Nicotine+ is 3.1.1, released on August 2, 2021. See the [release notes](NEWS.md).
+## Download
 
-Packages are available for:
+The current stable version of Nicotine+ is 3.3.7, released on December 15, 2024.
+See the [release notes](NEWS.md).
 
-- [GNU/Linux, *BSD and Solaris](doc/DOWNLOADS.md#gnulinux-bsd-solaris)
-- [Windows](doc/DOWNLOADS.md#windows)
-- [macOS](doc/DOWNLOADS.md#macos)
+Downloads are available for:
 
-# Getting Involved
+ - [GNU/Linux, *BSD and Solaris](doc/DOWNLOADS.md#gnulinux-bsd-solaris)
+ - [Windows](doc/DOWNLOADS.md#windows)
+ - [macOS](doc/DOWNLOADS.md#macos)
 
-If you feel like contributing to Nicotine+, several options are available:
 
-* Report a problem or suggest improvements by
-  * discussing your findings in the [#nicotine+ IRC channel](https://web.libera.chat/?channel=#nicotine+) on [Libera.Chat](https://libera.chat/), or
-  * [creating a new issue](https://github.com/nicotine-plus/nicotine-plus/issues) on GitHub.
-* Translate Nicotine+ into another language with [Hosted Weblate](https://hosted.weblate.org/engage/nicotine-plus), see [TRANSLATIONS.md](doc/TRANSLATIONS.md).
-* Package Nicotine+ for a distribution or operating system, see [DEPENDENCIES.md](doc/DEPENDENCIES.md).
-* Implement bug fixes and features, see [DEVELOPING.md](doc/DEVELOPING.md).
-  * For a list of tasks, see the [issue tracker](https://github.com/nicotine-plus/nicotine-plus/issues).
-  * For documentation on the Soulseek protocol, see [SLSKPROTOCOL.md](doc/SLSKPROTOCOL.md).
+## Get Involved
 
-# Where did the name Nicotine come from?
+If you feel like contributing to Nicotine+, there are several ways to get
+involved:
 
-> I was in a geeky mood and was browsing [http://www.bash.org](http://www.bash.org)'s QDB.  
+ - [Issue Tracker](https://github.com/nicotine-plus/nicotine-plus/issues)
+     – Report a problem or suggest improvements
+ - [Testing](doc/TESTING.md)
+     – Download the latest unstable build and help test Nicotine+
+ - [Translations](doc/TRANSLATIONS.md)
+     – Translate Nicotine+ into another language with [Weblate](https://hosted.weblate.org/engage/nicotine-plus)
+ - [Packaging](doc/PACKAGING.md)
+     – Package Nicotine+ for a distribution or operating system
+ - [Development](doc/DEVELOPING.md)
+     – Implement bug fixes, enhancements or new features
+ - [IRC Channel](https://web.libera.chat/?channel=#nicotine+)
+     – Chat in the #nicotine+ IRC channel on [Libera.Chat](https://libera.chat/)
+
+
+## Where did the name Nicotine come from?
+
+> I was in a geeky mood and was browsing bash.org's QDB.  
 I stumbled across this quote:  
->> **\<etc>** so tempting to release a product called 'nicotine' and wait for the patches.  
->> **\<etc>** then i would have a reason to only apply one patch a day. otherwise, i'm going against medical advise.  
+>> **\<etc>** so tempting to release a product called 'nicotine' and wait for
+>> the patches.  
+>> **\<etc>** then i would have a reason to only apply one patch a day.
+>> otherwise, i'm going against medical advise.  
 >
-> So I thought what the hell and bluntly stole etc's idea.  
+> So I thought what the hell and bluntly stole etc's idea.
 
-<p align="right">Hyriand, <i>founder of the Nicotine project</i>, 2003</p>
+— <cite>Hyriand, former Nicotine maintainer, 2003</cite>
 
-# Legal and Privacy
 
-- When connecting to the default Soulseek server, you agree to abide by the Soulseek [rules](https://www.slsknet.org/news/node/681) and [terms of service](https://www.slsknet.org/news/node/682).
-- Nicotine+ does not collect any user data. Different policies may apply to the default Soulseek server, since the Nicotine+ Team does not operate it.
+## Legal and Privacy
 
-# License
+The Nicotine+ Team does not collect any data used or stored by the client.
+Different policies may apply for data sent to the default Soulseek server,
+which is not operated by the Nicotine+ Team.
 
-Nicotine+ is released under the terms of the [GNU Public License v3](https://www.gnu.org/licenses/gpl-3.0-standalone.html) or later. For a list of contributors, see [AUTHORS.md](AUTHORS.md).
+When connecting to the default Soulseek server, you agree to abide by the
+Soulseek [rules](https://www.slsknet.org/news/node/681) and
+[terms of service](https://www.slsknet.org/news/node/682).
+
+Soulseek is an unencrypted protocol not intended for secure communication.
+
+
+## Authors
+
+Nicotine+ is free and open source software, released under the terms of the
+[GNU General Public License v3.0 or later](https://www.gnu.org/licenses/gpl-3.0-standalone.html).
+Nicotine+ exists thanks to its [authors](AUTHORS.md).
+
+© 2001–2025 Nicotine+, Nicotine and PySoulSeek Contributors

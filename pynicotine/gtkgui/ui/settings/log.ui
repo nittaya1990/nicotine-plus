@@ -1,503 +1,300 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-  <object class="GtkAdjustment" id="adjustment_PrivateLogLines">
-    <property name="upper">10000</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">10</property>
+  <requires lib="gtk+" version="3.0"/>
+  <object class="GtkButton" id="chatroom_log_folder_default_button">
+    <property name="tooltip-text" translatable="yes">Default</property>
+    <property name="valign">center</property>
+    <property name="visible">True</property>
+    <signal name="clicked" handler="on_default_chatroom_log_folder"/>
+    <child>
+      <object class="GtkImage">
+        <property name="icon-name">edit-undo-symbolic</property>
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <style>
+      <class name="image-button"/>
+    </style>
   </object>
-  <object class="GtkAdjustment" id="adjustment_RoomLogLines">
-    <property name="upper">10000</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">10</property>
+  <object class="GtkButton" id="private_chat_log_folder_default_button">
+    <property name="tooltip-text" translatable="yes">Default</property>
+    <property name="valign">center</property>
+    <property name="visible">True</property>
+    <signal name="clicked" handler="on_default_private_chat_log_folder"/>
+    <child>
+      <object class="GtkImage">
+        <property name="icon-name">edit-undo-symbolic</property>
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <style>
+      <class name="image-button"/>
+    </style>
   </object>
-  <object class="GtkBox" id="Main">
-    <property name="visible">1</property>
-    <property name="spacing">30</property>
+  <object class="GtkButton" id="transfer_log_folder_default_button">
+    <property name="tooltip-text" translatable="yes">Default</property>
+    <property name="valign">center</property>
+    <property name="visible">True</property>
+    <signal name="clicked" handler="on_default_transfer_log_folder"/>
+    <child>
+      <object class="GtkImage">
+        <property name="icon-name">edit-undo-symbolic</property>
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <style>
+      <class name="image-button"/>
+    </style>
+  </object>
+  <object class="GtkButton" id="debug_log_folder_default_button">
+    <property name="tooltip-text" translatable="yes">Default</property>
+    <property name="valign">center</property>
+    <property name="visible">True</property>
+    <signal name="clicked" handler="on_default_debug_log_folder"/>
+    <child>
+      <object class="GtkImage">
+        <property name="icon-name">edit-undo-symbolic</property>
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <style>
+      <class name="image-button"/>
+    </style>
+  </object>
+  <object class="GtkBox" id="container">
     <property name="orientation">vertical</property>
+    <property name="spacing">6</property>
+    <property name="visible">True</property>
     <child>
       <object class="GtkBox">
-        <property name="visible">1</property>
-        <property name="spacing">12</property>
         <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="visible">True</property>
         <child>
           <object class="GtkLabel">
-            <property name="visible">1</property>
+            <property name="halign">start</property>
             <property name="label" translatable="yes">Logging</property>
+            <property name="selectable">True</property>
+            <property name="visible">True</property>
+            <property name="wrap">True</property>
             <property name="xalign">0</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
+            <style>
+              <class name="heading"/>
+            </style>
           </object>
         </child>
         <child>
-          <object class="GtkCheckButton" id="LogRooms">
-            <property name="label" translatable="yes">Log chatrooms by default</property>
-            <property name="visible">1</property>
-            <property name="use-underline">1</property>
+          <object class="GtkBox">
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="height-request">24</property>
+                <property name="hexpand">True</property>
+                <property name="label" translatable="yes">Log chatrooms by default</property>
+                <property name="mnemonic-widget">log_chatroom_toggle</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="log_chatroom_toggle">
+                <property name="valign">center</property>
+                <property name="visible">True</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>
-          <object class="GtkCheckButton" id="LogPrivate">
-            <property name="label" translatable="yes">Log private chat by default</property>
-            <property name="visible">1</property>
-            <property name="use-underline">1</property>
+          <object class="GtkBox">
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="height-request">24</property>
+                <property name="hexpand">True</property>
+                <property name="label" translatable="yes">Log private chat by default</property>
+                <property name="mnemonic-widget">log_private_chat_toggle</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="log_private_chat_toggle">
+                <property name="valign">center</property>
+                <property name="visible">True</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>
-          <object class="GtkCheckButton" id="LogTransfers">
-            <property name="label" translatable="yes">Log transfers to file</property>
-            <property name="visible">1</property>
-            <property name="use-underline">1</property>
+          <object class="GtkBox">
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="height-request">24</property>
+                <property name="hexpand">True</property>
+                <property name="label" translatable="yes">Log transfers to file</property>
+                <property name="mnemonic-widget">log_transfer_toggle</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="log_transfer_toggle">
+                <property name="valign">center</property>
+                <property name="visible">True</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>
-          <object class="GtkCheckButton" id="LogDebug">
-            <property name="label" translatable="yes">Log debug messages to file</property>
-            <property name="visible">1</property>
-            <property name="use-underline">1</property>
+          <object class="GtkBox">
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="height-request">24</property>
+                <property name="hexpand">True</property>
+                <property name="label" translatable="yes">Log debug messages to file</property>
+                <property name="mnemonic-widget">log_debug_toggle</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="log_debug_toggle">
+                <property name="valign">center</property>
+                <property name="visible">True</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="homogeneous">True</property>
+            <property name="margin-top">6</property>
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Log timestamp format:</property>
+                <property name="mnemonic-widget">log_timestamp_format_entry</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkEntry" id="log_timestamp_format_entry">
+                <property name="secondary-icon-name">edit-undo-symbolic</property>
+                <property name="secondary-icon-tooltip-text" translatable="yes">Default</property>
+                <property name="valign">center</property>
+                <property name="visible">True</property>
+                <property name="width-chars">8</property>
+                <signal name="icon-press" handler="on_default_timestamp"/>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="format_codes_label">
+            <property name="halign">end</property>
+            <property name="visible">True</property>
+            <property name="wrap">True</property>
+            <property name="xalign">0</property>
           </object>
         </child>
       </object>
     </child>
     <child>
-      <object class="GtkBox">
-        <property name="visible">1</property>
-        <property name="spacing">12</property>
+      <object class="GtkBox" id="folder_locations_container">
         <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="visible">True</property>
         <child>
           <object class="GtkLabel">
-            <property name="visible">1</property>
+            <property name="halign">start</property>
             <property name="label" translatable="yes">Folder Locations</property>
+            <property name="selectable">True</property>
+            <property name="visible">True</property>
+            <property name="wrap">True</property>
             <property name="xalign">0</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
+            <style>
+              <class name="heading"/>
+            </style>
           </object>
         </child>
         <child>
-          <object class="GtkFlowBox">
-            <property name="visible">1</property>
-            <property name="row-spacing">12</property>
-            <property name="column-spacing">12</property>
-            <property name="max-children-per-line">2</property>
-            <property name="selection-mode">none</property>
+          <object class="GtkBox">
+            <property name="homogeneous">True</property>
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
             <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel" id="RoomLogDirLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Chatroom logs folder:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">RoomLogDir</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkButton" id="RoomLogDir">
-                    <property name="visible">1</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel" id="PrivateLogDirLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Private chat logs folder:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">PrivateLogDir</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkButton" id="PrivateLogDir">
-                    <property name="visible">1</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel" id="TransfersLogDirLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Transfer logs folder:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">TransfersLogDir</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkButton" id="TransfersLogDir">
-                    <property name="visible">1</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel" id="DebugLogDirLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Debug logs folder:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">DebugLogDir</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkButton" id="DebugLogDir">
-                    <property name="visible">1</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
-      </object>
-    </child>
-    <child>
-      <object class="GtkBox">
-        <property name="visible">1</property>
-        <property name="spacing">12</property>
-        <property name="orientation">vertical</property>
-        <child>
-          <object class="GtkLabel">
-            <property name="visible">1</property>
-            <property name="label" translatable="yes">Chat History</property>
-            <property name="xalign">0</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
-          </object>
-        </child>
-        <child>
-          <object class="GtkCheckButton" id="ReadRoomLogs">
-            <property name="label" translatable="yes">Display logged chat room messages when a room is rejoined</property>
-            <property name="visible">1</property>
-          </object>
-        </child>
-        <child>
-          <object class="GtkFlowBox">
-            <property name="visible">1</property>
-            <property name="column-spacing">12</property>
-            <property name="row-spacing">12</property>
-            <property name="max-children-per-line">2</property>
-            <property name="selection-mode">none</property>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Number of recent chat lines to show:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">RoomLogLines</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkSpinButton" id="RoomLogLines">
-                    <property name="visible">1</property>
-                    <property name="width-chars">5</property>
-                    <property name="adjustment">adjustment_RoomLogLines</property>
-                    <property name="numeric">1</property>
-                  </object>
-                </child>
+              <object class="GtkLabel" id="chatroom_log_folder_label">
+                <property name="label" translatable="yes">Chatroom logs folder:</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
               </object>
             </child>
           </object>
         </child>
         <child>
-          <object class="GtkCheckButton" id="ReopenPrivateChats">
-            <property name="label" translatable="yes">Restore previously open private chats on startup</property>
-            <property name="visible">1</property>
-            <property name="use-underline">1</property>
-          </object>
-        </child>
-        <child>
-          <object class="GtkFlowBox">
-            <property name="visible">1</property>
-            <property name="column-spacing">12</property>
-            <property name="row-spacing">12</property>
-            <property name="max-children-per-line">2</property>
-            <property name="selection-mode">none</property>
+          <object class="GtkBox">
+            <property name="homogeneous">True</property>
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
             <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Number of recent chat lines to show:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">PrivateLogLines</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkSpinButton" id="PrivateLogLines">
-                    <property name="visible">1</property>
-                    <property name="width-chars">5</property>
-                    <property name="adjustment">adjustment_PrivateLogLines</property>
-                    <property name="numeric">1</property>
-                  </object>
-                </child>
+              <object class="GtkLabel" id="private_chat_log_folder_label">
+                <property name="label" translatable="yes">Private chat logs folder:</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
               </object>
             </child>
           </object>
         </child>
-      </object>
-    </child>
-    <child>
-      <object class="GtkBox">
-        <property name="visible">1</property>
-        <property name="spacing">12</property>
-        <property name="orientation">vertical</property>
         <child>
-          <object class="GtkLabel">
-            <property name="visible">1</property>
-            <property name="label" translatable="yes">Timestamps</property>
-            <property name="xalign">0</property>
-            <attributes>
-              <attribute name="weight" value="bold"/>
-            </attributes>
+          <object class="GtkBox">
+            <property name="homogeneous">True</property>
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel" id="transfer_log_folder_label">
+                <property name="label" translatable="yes">Transfer logs folder:</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>
-          <object class="GtkCheckButton" id="ShowTimeStamps">
-            <property name="label" translatable="yes">Display timestamps</property>
-            <property name="visible">1</property>
-          </object>
-        </child>
-        <child>
-          <object class="GtkFlowBox">
-            <property name="visible">1</property>
-            <property name="row-spacing">12</property>
-            <property name="column-spacing">12</property>
-            <property name="max-children-per-line">2</property>
-            <property name="selection-mode">none</property>
+          <object class="GtkBox">
+            <property name="homogeneous">True</property>
+            <property name="spacing">12</property>
+            <property name="visible">True</property>
             <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Chat room format:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">ChatRoomFormat</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkBox">
-                    <property name="visible">1</property>
-                    <property name="spacing">12</property>
-                    <child>
-                      <object class="GtkEntry" id="ChatRoomFormat">
-                        <property name="visible">1</property>
-                        <property name="hexpand">1</property>
-                        <property name="tooltip-text">https://docs.python.org/3/library/time.html</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkButton" id="RoomDefaultTimestamp">
-                        <property name="visible">1</property>
-                        <signal name="clicked" handler="on_room_default_timestamp" swapped="no"/>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <property name="spacing">6</property>
-                            <child>
-                              <object class="GtkImage">
-                                <property name="visible">1</property>
-                                <property name="icon-name">view-refresh-symbolic</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel">
-                                <property name="visible">1</property>
-                                <property name="label" translatable="yes">Default</property>
-                                <property name="use-underline">1</property>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Private room format:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">PrivateChatFormat</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkBox">
-                    <property name="visible">1</property>
-                    <property name="spacing">12</property>
-                    <child>
-                      <object class="GtkEntry" id="PrivateChatFormat">
-                        <property name="visible">1</property>
-                        <property name="hexpand">1</property>
-                        <property name="tooltip-text">https://docs.python.org/3/library/time.html</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkButton" id="PrivateDefaultTimestamp">
-                        <property name="visible">1</property>
-                        <signal name="clicked" handler="on_private_default_timestamp" swapped="no"/>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <property name="spacing">6</property>
-                            <child>
-                              <object class="GtkImage">
-                                <property name="visible">1</property>
-                                <property name="icon-name">view-refresh-symbolic</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel">
-                                <property name="visible">1</property>
-                                <property name="label" translatable="yes">Default</property>
-                                <property name="use-underline">1</property>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkLabel">
-                    <property name="visible">1</property>
-                    <property name="label" translatable="yes">Log file format:</property>
-                    <property name="xalign">0</property>
-                    <property name="wrap">1</property>
-                    <property name="mnemonic_widget">LogFileFormat</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="GtkFlowBoxChild">
-                <property name="visible">1</property>
-                <property name="focusable">0</property>
-                <child>
-                  <object class="GtkBox">
-                    <property name="visible">1</property>
-                    <property name="spacing">12</property>
-                    <child>
-                      <object class="GtkEntry" id="LogFileFormat">
-                        <property name="visible">1</property>
-                        <property name="hexpand">1</property>
-                        <property name="tooltip-text">https://docs.python.org/3/library/time.html</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkButton" id="DefaultTimestamp">
-                        <property name="visible">1</property>
-                        <signal name="clicked" handler="on_default_timestamp" swapped="no"/>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <property name="spacing">6</property>
-                            <child>
-                              <object class="GtkImage">
-                                <property name="visible">1</property>
-                                <property name="icon-name">view-refresh-symbolic</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel">
-                                <property name="visible">1</property>
-                                <property name="label" translatable="yes">Default</property>
-                                <property name="use-underline">1</property>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
+              <object class="GtkLabel" id="debug_log_folder_label">
+                <property name="label" translatable="yes">Debug logs folder:</property>
+                <property name="visible">True</property>
+                <property name="wrap">True</property>
+                <property name="wrap-mode">word-char</property>
+                <property name="xalign">0</property>
               </object>
             </child>
           </object>

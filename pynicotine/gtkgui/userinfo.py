@@ -1,7 +1,7 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
 # COPYRIGHT (C) 2016-2017 Michael Labouebe <gfarmerfr@free.fr>
-# COPYRIGHT (C) 2008-2010 Quinox <quinox@users.sf.net>
-# COPYRIGHT (C) 2006-2009 Daelstorm <daelstorm@gmail.com>
+# COPYRIGHT (C) 2008-2010 quinox <quinox@users.sf.net>
+# COPYRIGHT (C) 2006-2009 daelstorm <daelstorm@gmail.com>
 # COPYRIGHT (C) 2003-2004 Hyriand <hyriand@thegraveyard.org>
 #
 # GNU GENERAL PUBLIC LICENSE
@@ -20,532 +20,820 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
 import time
 
+from gi.repository import Gdk
 from gi.repository import GdkPixbuf
+from gi.repository import Gio
 from gi.repository import GLib
 from gi.repository import Gtk
 
 from pynicotine.config import config
-from pynicotine.geoip.geoip import GeoIP
-from pynicotine.gtkgui.widgets.filechooser import save_file
+from pynicotine.core import core
+from pynicotine.events import events
+from pynicotine.gtkgui.application import GTK_API_VERSION
+from pynicotine.gtkgui.application import GTK_MINOR_VERSION
+from pynicotine.gtkgui.widgets import clipboard
+from pynicotine.gtkgui.widgets import ui
+from pynicotine.gtkgui.widgets.combobox import ComboBox
+from pynicotine.gtkgui.widgets.dialogs import EntryDialog
+from pynicotine.gtkgui.widgets.filechooser import FileChooserSave
 from pynicotine.gtkgui.widgets.iconnotebook import IconNotebook
 from pynicotine.gtkgui.widgets.infobar import InfoBar
 from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
-from pynicotine.gtkgui.widgets.textentry import CompletionEntry
+from pynicotine.gtkgui.widgets.popupmenu import UserPopupMenu
 from pynicotine.gtkgui.widgets.textview import TextView
-from pynicotine.gtkgui.widgets.theme import update_widget_visuals
-from pynicotine.gtkgui.widgets.treeview import initialise_columns
-from pynicotine.gtkgui.widgets.ui import UserInterface
+from pynicotine.gtkgui.widgets.theme import add_css_class
+from pynicotine.gtkgui.widgets.theme import get_flag_icon_name
+from pynicotine.gtkgui.widgets.theme import remove_css_class
+from pynicotine.gtkgui.widgets.treeview import TreeView
 from pynicotine.logfacility import log
+from pynicotine.slskmessages import ConnectionType
+from pynicotine.slskmessages import UserStatus
 from pynicotine.utils import humanize
 from pynicotine.utils import human_speed
 
 
 class UserInfos(IconNotebook):
 
-    def __init__(self, frame):
+    def __init__(self, window):
 
-        self.frame = frame
-        self.page_id = "userinfo"
-        self.pages = {}
-
-        IconNotebook.__init__(
-            self,
-            self.frame,
-            tabclosers=config.sections["ui"]["tabclosers"],
-            show_hilite_image=config.sections["notifications"]["notification_tab_icons"],
-            show_status_image=config.sections["ui"]["tab_status_icons"],
-            notebookraw=self.frame.userinfo_notebook
+        super().__init__(
+            window,
+            parent=window.userinfo_content,
+            parent_page=window.userinfo_page
         )
 
-        CompletionEntry(frame.UserInfoEntry, frame.UserInfoCombo.get_model())
+        self.page = window.userinfo_page
+        self.page.id = "userinfo"
+        self.toolbar = window.userinfo_toolbar
+        self.toolbar_start_content = window.userinfo_title
+        self.toolbar_end_content = window.userinfo_end
+        self.toolbar_default_widget = window.userinfo_entry
 
-        self.notebook.connect("switch-page", self.on_switch_info_page)
+        self.userinfo_combobox = ComboBox(
+            container=self.window.userinfo_title, has_entry=True, has_entry_completion=True,
+            entry=self.window.userinfo_entry, item_selected_callback=self.on_show_user_profile
+        )
 
-    def on_switch_info_page(self, notebook, page, page_num):
+        # Events
+        for event_name, callback in (
+            ("add-buddy", self.add_remove_buddy),
+            ("ban-user", self.ban_unban_user),
+            ("check-privileges", self.check_privileges),
+            ("ignore-user", self.ignore_unignore_user),
+            ("peer-connection-closed", self.peer_connection_error),
+            ("peer-connection-error", self.peer_connection_error),
+            ("quit", self.quit),
+            ("remove-buddy", self.add_remove_buddy),
+            ("server-disconnect", self.server_disconnect),
+            ("unban-user", self.ban_unban_user),
+            ("unignore-user", self.ignore_unignore_user),
+            ("user-country", self.user_country),
+            ("user-info-progress", self.user_info_progress),
+            ("user-info-remove-user", self.remove_user),
+            ("user-info-response", self.user_info_response),
+            ("user-info-show-user", self.show_user),
+            ("user-interests", self.user_interests),
+            ("user-stats", self.user_stats),
+            ("user-status", self.user_status)
+        ):
+            events.connect(event_name, callback)
 
-        if self.frame.current_page_id != self.page_id:
+    def quit(self):
+        self.freeze()
+
+    def destroy(self):
+        self.userinfo_combobox.destroy()
+        super().destroy()
+
+    def on_focus(self, *_args):
+
+        if self.window.current_page_id != self.window.userinfo_page.id:
+            return True
+
+        if self.get_n_pages():
+            return True
+
+        if self.window.userinfo_entry.is_sensitive():
+            self.window.userinfo_entry.grab_focus()
+            return True
+
+        return False
+
+    def on_remove_all_pages(self, *_args):
+        core.userinfo.remove_all_users()
+
+    def on_restore_removed_page(self, page_args):
+        username, = page_args
+        core.userinfo.show_user(username)
+
+    def on_show_user_profile(self, *_args):
+
+        username = self.window.userinfo_entry.get_text().strip()
+
+        if not username:
             return
 
-        for tab in self.pages.values():
-            if tab.Main == page:
-                GLib.idle_add(lambda: tab.descr.grab_focus() == -1)
-                break
+        self.window.userinfo_entry.set_text("")
+        core.userinfo.show_user(username)
 
-    def show_user(self, user, switch_page=True):
+    def show_user(self, user, switch_page=True, **_unused):
 
-        if user not in self.pages:
-            try:
-                status = self.frame.np.users[user].status
-            except Exception:
-                # Offline
-                status = 0
+        page = self.pages.get(user)
 
+        if page is None:
             self.pages[user] = page = UserInfo(self, user)
-            self.append_page(page.Main, user, page.on_close, status=status)
-            page.set_label(self.get_tab_label_inner(page.Main))
 
-            if self.get_n_pages() > 0:
-                self.frame.userinfo_status_page.hide()
+            self.append_page(page.container, user, focus_callback=page.on_focus,
+                             close_callback=page.on_close, user=user)
+            page.set_label(self.get_tab_label_inner(page.container))
 
         if switch_page:
-            self.set_current_page(self.page_num(self.pages[user].Main))
-            self.frame.change_main_page("userinfo")
+            self.set_current_page(page.container)
+            self.window.change_main_page(self.window.userinfo_page)
 
-    def set_conn(self, user, conn):
-        if user in self.pages:
-            self.pages[user].conn = conn
+    def remove_user(self, user):
 
-    def show_connection_error(self, user):
-        if user in self.pages:
-            self.pages[user].show_connection_error()
+        page = self.pages.get(user)
 
-    def get_user_stats(self, msg):
-        if msg.user in self.pages:
-            self.pages[msg.user].get_user_stats(msg)
+        if page is None:
+            return
 
-    def get_user_status(self, msg):
+        page.clear()
+        self.remove_page(page.container, page_args=(user,))
+        del self.pages[user]
+        page.destroy()
 
-        if msg.user in self.pages:
-            page = self.pages[msg.user]
-            self.set_user_status(page.Main, msg.user, msg.status)
+    def check_privileges(self, _msg):
+        for page in self.pages.values():
+            page.update_privileges_button_state()
 
-    def set_user_country(self, user, country_code):
-        if user in self.pages:
-            self.pages[user].set_user_country(country_code)
+    def ban_unban_user(self, user):
+
+        page = self.pages.get(user)
+
+        if page is not None:
+            page.update_ban_button_state()
+
+    def ignore_unignore_user(self, user):
+
+        page = self.pages.get(user)
+
+        if page is not None:
+            page.update_ignore_button_state()
+
+    def add_remove_buddy(self, user, *_args):
+
+        page = self.pages.get(user)
+
+        if page is not None:
+            page.update_buddy_button_state()
+
+    def peer_connection_error(self, username, conn_type, **_unused):
+
+        page = self.pages.get(username)
+
+        if page is None:
+            return
+
+        if conn_type == ConnectionType.PEER:
+            page.peer_connection_error()
+
+    def user_stats(self, msg):
+
+        page = self.pages.get(msg.user)
+
+        if page is not None:
+            page.user_stats(msg)
+
+    def user_status(self, msg):
+
+        page = self.pages.get(msg.user)
+
+        if page is not None:
+            self.set_user_status(page.container, msg.user, msg.status)
+
+    def user_country(self, user, country_code):
+
+        page = self.pages.get(user)
+
+        if page is not None:
+            page.user_country(country_code)
 
     def user_interests(self, msg):
-        if msg.user in self.pages:
-            self.pages[msg.user].user_interests(msg)
 
-    def user_info_reply(self, user, msg):
-        if user in self.pages:
-            self.pages[user].user_info_reply(msg)
+        page = self.pages.get(msg.user)
 
-    def update_gauge(self, msg):
+        if page is not None:
+            page.user_interests(msg)
 
-        for page in self.pages.values():
-            if page.conn == msg.conn.conn:
-                page.update_gauge(msg)
+    def user_info_progress(self, user, _sock, position, total):
 
-    def update_visuals(self):
-        for page in self.pages.values():
-            page.update_visuals()
+        page = self.pages.get(user)
 
-    def server_disconnect(self):
+        if page is not None:
+            page.user_info_progress(position, total)
+
+    def user_info_response(self, msg):
+
+        page = self.pages.get(msg.username)
+
+        if page is not None:
+            page.user_info_response(msg)
+
+    def server_disconnect(self, *_args):
         for user, page in self.pages.items():
-            self.set_user_status(page.Main, user, 0)
+            self.set_user_status(page.container, user, UserStatus.OFFLINE)
 
 
-class UserInfo(UserInterface):
+class UserInfo:
 
     def __init__(self, userinfos, user):
 
-        super().__init__("ui/userinfo.ui")
+        (
+            self.add_remove_buddy_label,
+            self.ban_unban_user_button,
+            self.ban_unban_user_label,
+            self.container,
+            self.country_button,
+            self.country_icon,
+            self.country_label,
+            self.description_view_container,
+            self.dislikes_list_container,
+            self.edit_interests_button,
+            self.edit_profile_button,
+            self.free_upload_slots_label,
+            self.gift_privileges_button,
+            self.ignore_unignore_user_button,
+            self.ignore_unignore_user_label,
+            self.info_bar_container,
+            self.interests_container,
+            self.likes_list_container,
+            self.picture_view,
+            self.progress_bar,
+            self.queued_uploads_label,
+            self.refresh_button,
+            self.retry_button,
+            self.shared_files_label,
+            self.shared_folders_label,
+            self.upload_slots_label,
+            self.upload_speed_label,
+            self.user_info_container,
+            self.user_label
+        ) = ui.load(scope=self, path="userinfo.ui")
 
         self.userinfos = userinfos
-        self.frame = userinfos.frame
+        self.window = userinfos.window
 
-        self.info_bar = InfoBar(self.InfoBar, Gtk.MessageType.INFO)
+        self.info_bar = InfoBar(parent=self.info_bar_container, button=self.retry_button)
+        self.description_view = TextView(self.description_view_container, editable=False, vertical_margin=5)
+        self.user_label.set_text(user)
 
-        if Gtk.get_major_version() == 4:
-            self.image = Gtk.Picture()
-            self.image.set_can_shrink(False)
-            self.image.set_halign(Gtk.Align.CENTER)
-            self.image.set_valign(Gtk.Align.CENTER)
+        if GTK_API_VERSION >= 4:
+            self.country_icon.set_pixel_size(21)
+            self.picture = Gtk.Picture(can_shrink=True, focusable=True, hexpand=True, vexpand=True)
+            self.picture_view.append(self.picture)  # pylint: disable=no-member
 
-            self.ImageViewport.set_child(self.image)
-
-            self.scroll_controller = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
-            self.scroll_controller.connect("scroll", self.on_scroll)
-            self.ImageViewport.add_controller(self.scroll_controller)
+            if (GTK_API_VERSION, GTK_MINOR_VERSION) >= (4, 8):
+                self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+            else:
+                self.picture.set_keep_aspect_ratio(True)
 
         else:
-            self.image = Gtk.Image()
-            self.image.show()
+            # Setting a pixel size of 21 results in a misaligned country flag
+            self.country_icon.set_pixel_size(0)
 
-            self.ImageViewport.add(self.image)
-            self.ImageViewport.connect("scroll-event", self.on_scroll_event)
+            self.picture = Gtk.EventBox(can_focus=True, hexpand=True, vexpand=True, visible=True)
+            self.picture.connect("draw", self.on_draw_picture)
+
+            self.picture_view.add(self.picture)    # pylint: disable=no-member
 
         self.user = user
-        self.conn = None
-        self.image_pixbuf = None
-        self.zoom_factor = 5
-        self.actual_zoom = 0
+        self.picture_data = None
+        self.picture_surface = None
+        self.indeterminate_progress = False
 
-        self.descr_textview = TextView(self.descr)
-
-        self.hates_store = Gtk.ListStore(str)
-        self.Hates.set_model(self.hates_store)
-
-        self.hate_column_numbers = list(range(self.hates_store.get_n_columns()))
-        cols = initialise_columns(
-            None, self.Hates,
-            ["dislikes", _("Dislikes"), 0, "text", None]
+        # Set up likes list
+        self.likes_list_view = TreeView(
+            self.window, parent=self.likes_list_container,
+            activate_row_callback=self.on_likes_row_activated,
+            columns={
+                "likes": {
+                    "column_type": "text",
+                    "title": _("Likes"),
+                    "default_sort_type": "ascending"
+                }
+            }
         )
-        cols["dislikes"].set_sort_column_id(0)
 
-        self.hates_store.set_sort_column_id(0, Gtk.SortType.ASCENDING)
-
-        self.likes_store = Gtk.ListStore(str)
-        self.Likes.set_model(self.likes_store)
-
-        self.like_column_numbers = list(range(self.likes_store.get_n_columns()))
-        cols = initialise_columns(
-            None, self.Likes,
-            ["likes", _("Likes"), 0, "text", None]
+        # Set up dislikes list
+        self.dislikes_list_view = TreeView(
+            self.window, parent=self.dislikes_list_container,
+            activate_row_callback=self.on_dislikes_row_activated,
+            columns={
+                "dislikes": {
+                    "column_type": "text",
+                    "title": _("Dislikes"),
+                    "default_sort_type": "ascending"
+                }
+            }
         )
-        cols["likes"].set_sort_column_id(0)
 
-        self.likes_store.set_sort_column_id(0, Gtk.SortType.ASCENDING)
-
-        self.update_visuals()
-
-        self.user_popup = popup = PopupMenu(self.frame, None, self.on_tab_popup)
-        popup.setup_user_menu(user, page="userinfo")
-        popup.setup(
+        # Popup menus
+        self.user_popup_menu = UserPopupMenu(
+            self.window.application, callback=self.on_tab_popup, username=user, tab_name="userinfo"
+        )
+        self.user_popup_menu.add_items(
             ("", None),
             ("#" + _("Close All Tabs…"), self.on_close_all_tabs),
             ("#" + _("_Close Tab"), self.on_close)
         )
 
-        def get_interest_items(popup):
-            return (("$" + _("I _Like This"), self.on_like_recommendation, popup),
-                    ("$" + _("I _Dislike This"), self.on_dislike_recommendation, popup),
-                    ("", None),
-                    ("#" + _("_Search for Item"), self.on_interest_recommend_search, popup))
+        def get_interest_items(list_view, column_id):
+            return (
+                ("$" + _("I _Like This"), self.window.interests.on_like_recommendation, list_view, column_id),
+                ("$" + _("I _Dislike This"), self.window.interests.on_dislike_recommendation, list_view, column_id),
+                ("", None),
+                ("#" + _("_Recommendations for Item"), self.window.interests.on_recommend_item, list_view, column_id),
+                ("#" + _("_Search for Item"), self.window.interests.on_recommend_search, list_view, column_id)
+            )
 
-        self.likes_popup_menu = popup = PopupMenu(self.frame, self.Likes, self.on_popup_interest_menu)
-        popup.setup(*get_interest_items(popup))
+        self.likes_popup_menu = PopupMenu(self.window.application, self.likes_list_view.widget,
+                                          self.on_popup_likes_menu)
+        self.likes_popup_menu.add_items(*get_interest_items(self.likes_list_view, "likes"))
 
-        self.hates_popup_menu = popup = PopupMenu(self.frame, self.Hates, self.on_popup_interest_menu)
-        popup.setup(*get_interest_items(popup))
+        self.dislikes_popup_menu = PopupMenu(self.window.application, self.dislikes_list_view.widget,
+                                             self.on_popup_dislikes_menu)
+        self.dislikes_popup_menu.add_items(*get_interest_items(self.dislikes_list_view, "dislikes"))
 
-        self.image_menu = popup = PopupMenu(self.frame, self.ImageContainer, self.on_image_popup_menu)
-        popup.setup(
-            ("#" + _("Zoom 1:1"), self.make_zoom_normal),
-            ("#" + _("Zoom In"), self.make_zoom_in),
-            ("#" + _("Zoom Out"), self.make_zoom_out),
+        self.picture_popup_menu = PopupMenu(self.window.application, self.picture)
+        self.picture_popup_menu.add_items(
+            ("#" + _("Copy Picture"), self.on_copy_picture),
+            ("#" + _("Save Picture"), self.on_save_picture),
             ("", None),
-            ("#" + _("Save Picture"), self.on_save_picture)
+            ("#" + _("Remove"), self.on_hide_picture)
         )
 
+        self.popup_menus = (
+            self.user_popup_menu, self.likes_popup_menu, self.dislikes_popup_menu,
+            self.picture_popup_menu
+        )
+
+        self.remove_picture()
+        self.populate_stats()
+        self.update_button_states()
+
+    def clear(self):
+
+        self.description_view.clear()
+        self.likes_list_view.clear()
+        self.dislikes_list_view.clear()
+        self.remove_picture()
+
+    def destroy(self):
+
+        for menu in self.popup_menus:
+            menu.destroy()
+
+        self.info_bar.destroy()
+        self.description_view.destroy()
+        self.likes_list_view.destroy()
+        self.dislikes_list_view.destroy()
+        self.__dict__.clear()
+
+        self.indeterminate_progress = False  # Stop progress bar timer
+
     def set_label(self, label):
-        self.user_popup.set_widget(label)
+        self.user_popup_menu.set_parent(label)
 
-    def update_visuals(self):
+    # General #
 
-        for widget in list(self.__dict__.values()):
-            update_widget_visuals(widget)
+    def populate_stats(self):
 
-    def user_interests(self, msg):
+        country_code = core.users.countries.get(self.user)
+        stats = core.users.watched.get(self.user)
 
-        self.likes_store.clear()
-        self.hates_store.clear()
+        if stats is not None:
+            speed = stats.upload_speed or 0
+            files = stats.files
+            folders = stats.folders
+        else:
+            speed = 0
+            files = folders = None
 
-        for like in msg.likes:
-            self.likes_store.insert_with_valuesv(-1, self.like_column_numbers, [like])
+        if speed > 0:
+            self.upload_speed_label.set_text(human_speed(speed))
 
-        for hate in msg.hates:
-            self.hates_store.insert_with_valuesv(-1, self.hate_column_numbers, [hate])
+        if files is not None:
+            self.shared_files_label.set_text(humanize(files))
 
-    def save_columns(self):
-        # Unused
-        pass
+        if folders is not None:
+            self.shared_folders_label.set_text(humanize(folders))
+
+        if country_code:
+            self.user_country(country_code)
+
+    def remove_picture(self):
+
+        if GTK_API_VERSION >= 4:
+            # Empty paintable to prevent container width from shrinking
+            self.picture.set_paintable(Gdk.Paintable.new_empty(intrinsic_width=1, intrinsic_height=1))
+
+        self.picture_data = None
+        self.picture_surface = None
+
+        self.hide_picture()
 
     def load_picture(self, data):
 
-        if data is None:
-            self.image.hide()
+        if not data:
+            self.remove_picture()
             return
 
         try:
-            import gc
-            import tempfile
+            if GTK_API_VERSION >= 4:
+                self.picture_data = Gdk.Texture.new_from_bytes(GLib.Bytes(data))
+                self.picture.set_paintable(self.picture_data)
+            else:
+                data_stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes(data))
+                self.picture_data = GdkPixbuf.Pixbuf.new_from_stream(data_stream, cancellable=None)
+                self.picture_surface = Gdk.cairo_surface_create_from_pixbuf(self.picture_data, scale=1, for_window=None)
 
-            with tempfile.NamedTemporaryFile() as f:
-                f.write(data)
-                del data
-
-                self.image_pixbuf = pixbuf = GdkPixbuf.Pixbuf.new_from_file(f.name)
-                image_width = self.image_pixbuf.get_width()
-                image_height = self.image_pixbuf.get_height()
-
-                allocation = self.ImageViewport.get_allocation()
-                max_width = allocation.width - 24
-                max_height = allocation.height - 24
-
-                # Resize pixbuf to fit container
-                ratio = min(max_width / image_width, max_height / image_height)
-                pixbuf = self.image_pixbuf.scale_simple(
-                    ratio * image_width, ratio * image_height, GdkPixbuf.InterpType.BILINEAR)
-
-                if Gtk.get_major_version() == 4:
-                    self.image.set_pixbuf(pixbuf)
-                else:
-                    self.image.set_from_pixbuf(pixbuf)
-
-            gc.collect()
-
-            self.actual_zoom = 0
-            self.SavePicture.set_sensitive(True)
-
-            self.image.show()
-
-        except Exception as e:
+        except Exception as error:
             log.add(_("Failed to load picture for user %(user)s: %(error)s"), {
                 "user": self.user,
-                "error": str(e)
+                "error": error
             })
+            self.remove_picture()
+            return
 
-    def get_user_stats(self, msg):
+        self.show_picture()
 
-        if msg.avgspeed > 0:
-            self.speed.set_text(human_speed(msg.avgspeed))
+    def show_picture(self):
 
-        self.filesshared.set_text(humanize(msg.files))
-        self.dirsshared.set_text(humanize(msg.dirs))
+        if GTK_API_VERSION == 3:
+            self.user_info_container.set_hexpand(False)
+            self.interests_container.set_hexpand(False)
 
-    def set_user_country(self, country_code):
+        self.picture_view.set_visible(True)
+        self.picture_view.set_hexpand(True)
 
-        if country_code:
-            country = GeoIP.country_code_to_name(country_code)
-            country_text = "%s (%s)" % (country, country_code)
-        else:
-            country_text = _("Unknown")
+        add_css_class(self.interests_container, "border-end")
 
-        self.country.set_text(country_text)
+    def hide_picture(self):
 
-    def show_connection_error(self):
+        if GTK_API_VERSION == 3:
+            self.user_info_container.set_hexpand(True)
+            self.interests_container.set_hexpand(True)
 
-        self.info_bar.show_message(
+        self.picture_view.set_visible(False)
+        self.picture_view.set_hexpand(False)
+
+        remove_css_class(self.interests_container, "border-end")
+
+    def peer_connection_error(self):
+
+        if self.refresh_button.get_sensitive():
+            return
+
+        self.info_bar.show_error_message(
             _("Unable to request information from user. Either you both have a closed listening "
               "port, the user is offline, or there's a temporary connectivity issue.")
         )
-
         self.set_finished()
+
+    def pulse_progress(self, repeat=True):
+
+        if not self.indeterminate_progress:
+            return False
+
+        self.progress_bar.pulse()
+        return repeat
+
+    def user_info_progress(self, position, total):
+
+        self.indeterminate_progress = False
+
+        if total <= 0 or position <= 0:
+            fraction = 0.0
+
+        elif position < total:
+            fraction = float(position) / total
+
+        else:
+            fraction = 1.0
+
+        self.progress_bar.set_fraction(fraction)
+
+    def set_indeterminate_progress(self):
+
+        self.indeterminate_progress = True
+
+        self.progress_bar.get_parent().set_reveal_child(True)
+        self.progress_bar.pulse()
+        GLib.timeout_add(320, self.pulse_progress, False)
+        GLib.timeout_add(1000, self.pulse_progress)
+
+        self.info_bar.set_visible(False)
+        self.refresh_button.set_sensitive(False)
 
     def set_finished(self):
 
-        self.frame.request_tab_hilite(self.userinfos.page_id)
-        self.userinfos.request_changed(self.Main)
+        self.indeterminate_progress = False
 
-        self.progressbar.set_fraction(1.0)
+        self.userinfos.request_tab_changed(self.container)
+        self.progress_bar.set_fraction(1.0)
+        self.progress_bar.get_parent().set_reveal_child(False)
 
-    def user_info_reply(self, msg):
+        self.refresh_button.set_sensitive(True)
+
+    # Button States #
+
+    def update_local_buttons_state(self):
+
+        local_username = core.users.login_username or config.sections["server"]["login"]
+
+        for widget in (self.edit_interests_button, self.edit_profile_button):
+            widget.set_visible(self.user == local_username)
+
+        for widget in (self.ban_unban_user_button, self.ignore_unignore_user_button):
+            widget.set_visible(self.user != local_username)
+
+    def update_buddy_button_state(self):
+        label = _("Remove _Buddy") if self.user in core.buddies.users else _("Add _Buddy")
+        self.add_remove_buddy_label.set_text_with_mnemonic(label)
+
+    def update_ban_button_state(self):
+        label = _("Unban User") if core.network_filter.is_user_banned(self.user) else _("Ban User")
+        self.ban_unban_user_label.set_text(label)
+
+    def update_ignore_button_state(self):
+        label = _("Unignore User") if core.network_filter.is_user_ignored(self.user) else _("Ignore User")
+        self.ignore_unignore_user_label.set_text(label)
+
+    def update_privileges_button_state(self):
+        self.gift_privileges_button.set_sensitive(bool(core.users.privileges_left))
+
+    def update_button_states(self):
+
+        self.update_local_buttons_state()
+        self.update_buddy_button_state()
+        self.update_ban_button_state()
+        self.update_ignore_button_state()
+        self.update_privileges_button_state()
+
+    # Network Messages #
+
+    def user_info_response(self, msg):
 
         if msg is None:
             return
 
-        self.descr_textview.clear()
-        self.descr_textview.append_line(msg.descr, showstamp=False, scroll=False)
+        if msg.descr is not None:
+            self.description_view.clear()
+            self.description_view.append_line(msg.descr)
 
-        self.uploads.set_text(humanize(msg.totalupl))
-        self.queuesize.set_text(humanize(msg.queuesize))
-        self.slotsavail.set_text(_("Yes") if msg.slotsavail else _("No"))
+        self.free_upload_slots_label.set_text(_("Yes") if msg.slotsavail else _("No"))
+        self.upload_slots_label.set_text(humanize(msg.totalupl))
+        self.queued_uploads_label.set_text(humanize(msg.queuesize))
 
-        self.image_pixbuf = None
+        self.queued_uploads_label.get_parent().set_visible(bool(msg.queuesize))
+
+        self.picture_data = None
         self.load_picture(msg.pic)
 
         self.info_bar.set_visible(False)
         self.set_finished()
 
-    def update_gauge(self, msg):
+    def user_stats(self, msg):
 
-        if msg.total == 0 or msg.bufferlen == 0:
-            fraction = 0.0
-        elif msg.bufferlen >= msg.total:
-            fraction = 1.0
-        else:
-            fraction = float(msg.bufferlen) / msg.total
+        speed = msg.avgspeed or 0
+        num_files = msg.files or 0
+        num_folders = msg.dirs or 0
 
-        self.progressbar.set_fraction(fraction)
+        h_speed = human_speed(speed) if speed > 0 else _("Unknown")
+        h_num_files = humanize(num_files)
+        h_num_folders = humanize(num_folders)
 
-    """ Events """
+        if self.upload_speed_label.get_text() != h_speed:
+            self.upload_speed_label.set_text(h_speed)
 
-    def on_tab_popup(self, *args):
-        self.user_popup.toggle_user_items()
+        if self.shared_files_label.get_text() != h_num_files:
+            self.shared_files_label.set_text(h_num_files)
 
-    def on_popup_interest_menu(self, menu, widget):
+        if self.shared_folders_label.get_text() != h_num_folders:
+            self.shared_folders_label.set_text(h_num_folders)
 
-        model, iterator = widget.get_selection().get_selected()
+    def user_country(self, country_code):
 
-        if iterator is None:
-            return True
-
-        item = model.get_value(iterator, 0)
-
-        if item is None:
-            return True
-
-        menu.set_user(item)
-
-        actions = menu.get_actions()
-        actions[_("I _Like This")].set_state(
-            GLib.Variant.new_boolean(item in config.sections["interests"]["likes"])
-        )
-        actions[_("I _Dislike This")].set_state(
-            GLib.Variant.new_boolean(item in config.sections["interests"]["dislikes"])
-        )
-
-    def on_like_recommendation(self, action, state, popup):
-        self.frame.interests.on_like_recommendation(action, state, popup.get_user())
-
-    def on_dislike_recommendation(self, action, state, popup):
-        self.frame.interests.on_dislike_recommendation(action, state, popup.get_user())
-
-    def on_interest_recommend_search(self, action, state, popup):
-        self.frame.interests.recommend_search(popup.get_user())
-
-    def on_send_message(self, *args):
-        self.frame.np.privatechats.show_user(self.user)
-        self.frame.change_main_page("private")
-
-    def on_show_ip_address(self, *args):
-        self.frame.np.request_ip_address(self.user)
-
-    def on_refresh(self, *args):
-
-        self.info_bar.set_visible(False)
-        self.progressbar.set_fraction(0.0)
-
-        self.frame.np.userinfo.request_user_info(self.user)
-
-    def on_browse_user(self, *args):
-        self.frame.np.userbrowse.browse_user(self.user)
-
-    def on_add_to_list(self, *args):
-        self.frame.np.userlist.add_user(self.user)
-
-    def on_ban_user(self, *args):
-        self.frame.np.network_filter.ban_user(self.user)
-
-    def on_ignore_user(self, *args):
-        self.frame.np.network_filter.ignore_user(self.user)
-
-    def on_save_picture_response(self, selected, data):
-
-        if not os.path.exists(selected):
-            self.image_pixbuf.savev(selected, "jpeg", ["quality"], ["100"])
-            log.add(_("Picture saved to %s"), selected)
-        else:
-            log.add(_("Picture not saved, %s already exists."), selected)
-
-    def on_save_picture(self, *args):
-
-        if self.image is None or self.image_pixbuf is None:
+        if not country_code:
             return
 
-        save_file(
-            parent=self.frame.MainWindow,
+        country_name = core.network_filter.COUNTRIES.get(country_code, _("Unknown"))
+
+        self.country_label.set_text(country_name)
+        self.country_button.set_tooltip_text(f"{country_name} ({country_code})")
+
+        icon_name = get_flag_icon_name(country_code)
+        icon_args = (Gtk.IconSize.BUTTON,) if GTK_API_VERSION == 3 else ()  # pylint: disable=no-member
+
+        self.country_icon.set_from_icon_name(icon_name, *icon_args)
+        self.country_button.set_visible(bool(icon_name))
+
+    def user_interests(self, msg):
+
+        self.likes_list_view.clear()
+        self.likes_list_view.freeze()
+        self.dislikes_list_view.clear()
+        self.dislikes_list_view.freeze()
+
+        for like in msg.likes:
+            self.likes_list_view.add_row([like], select_row=False)
+
+        for hate in msg.hates:
+            self.dislikes_list_view.add_row([hate], select_row=False)
+
+        self.likes_list_view.unfreeze()
+        self.dislikes_list_view.unfreeze()
+
+    # Callbacks #
+
+    def on_show_progress_bar(self, progress_bar):
+        """Enables indeterminate progress bar mode when tab is active."""
+
+        if not self.indeterminate_progress and progress_bar.get_fraction() <= 0.0:
+            self.set_indeterminate_progress()
+
+        if core.users.login_status == UserStatus.OFFLINE:
+            self.peer_connection_error()
+
+    def on_hide_progress_bar(self, progress_bar):
+        """Disables indeterminate progress bar mode when switching to another tab."""
+
+        if self.indeterminate_progress:
+            self.indeterminate_progress = False
+            progress_bar.set_fraction(0.0)
+
+    def on_draw_picture(self, area, context):
+        """Draws a centered picture that fills the drawing area."""
+
+        area_width = area.get_allocated_width()
+        area_height = area.get_allocated_height()
+        picture_width = self.picture_surface.get_width()
+        picture_height = self.picture_surface.get_height()
+
+        scale_factor = min(area_width / picture_width, area_height / picture_height)
+        translate_x = (area_width - (picture_width * scale_factor)) / 2
+        translate_y = (area_height - (picture_height * scale_factor)) / 2
+
+        context.translate(translate_x, translate_y)
+        context.scale(scale_factor, scale_factor)
+        context.set_source_surface(self.picture_surface, 0, 0)
+        context.paint()
+
+    def on_tab_popup(self, *_args):
+        self.user_popup_menu.toggle_user_items()
+
+    def on_popup_likes_menu(self, menu, *_args):
+        self.window.interests.toggle_menu_items(menu, self.likes_list_view, column_id="likes")
+
+    def on_popup_dislikes_menu(self, menu, *_args):
+        self.window.interests.toggle_menu_items(menu, self.dislikes_list_view, column_id="dislikes")
+
+    def on_edit_profile(self, *_args):
+        self.window.application.on_preferences(page_id="user-profile")
+
+    def on_edit_interests(self, *_args):
+        self.window.change_main_page(self.window.interests_page)
+
+    def on_likes_row_activated(self, *_args):
+        self.window.interests.show_item_recommendations(self.likes_list_view, column_id="likes")
+
+    def on_dislikes_row_activated(self, *_args):
+        self.window.interests.show_item_recommendations(self.dislikes_list_view, column_id="dislikes")
+
+    def on_send_message(self, *_args):
+        core.privatechat.show_user(self.user)
+
+    def on_show_ip_address(self, *_args):
+        core.users.request_ip_address(self.user, notify=True)
+
+    def on_browse_user(self, *_args):
+        core.userbrowse.browse_user(self.user)
+
+    def on_add_remove_buddy(self, *_args):
+
+        if self.user in core.buddies.users:
+            core.buddies.remove_buddy(self.user)
+            return
+
+        core.buddies.add_buddy(self.user)
+
+    def on_ban_unban_user(self, *_args):
+
+        if core.network_filter.is_user_banned(self.user):
+            core.network_filter.unban_user(self.user)
+            return
+
+        core.network_filter.ban_user(self.user)
+
+    def on_ignore_unignore_user(self, *_args):
+
+        if core.network_filter.is_user_ignored(self.user):
+            core.network_filter.unignore_user(self.user)
+            return
+
+        core.network_filter.ignore_user(self.user)
+
+    def on_give_privileges_response(self, dialog, _response_id, _data):
+
+        days = dialog.get_entry_value()
+
+        if not days:
+            return
+
+        try:
+            days = int(days)
+
+        except ValueError:
+            self.on_give_privileges(error=_("Please enter number of days."))
+            return
+
+        core.users.request_give_privileges(self.user, days)
+
+    def on_give_privileges(self, *_args, error=None):
+
+        core.users.request_check_privileges()
+
+        if core.users.privileges_left is None:
+            days = _("Unknown")
+        else:
+            days = core.users.privileges_left // 60 // 60 // 24
+
+        message = (_("Gift days of your Soulseek privileges to user %(user)s (%(days_left)s):") %
+                   {"user": self.user, "days_left": _("%(days)s days left") % {"days": days}})
+
+        if error:
+            message += "\n\n" + error
+
+        EntryDialog(
+            parent=self.window,
+            title=_("Gift Privileges"),
+            message=message,
+            action_button_label=_("_Give Privileges"),
+            callback=self.on_give_privileges_response
+        ).present()
+
+    def on_copy_picture(self, *_args):
+
+        if self.picture_data is None:
+            return
+
+        clipboard.copy_image(self.picture_data)
+
+    def on_save_picture_response(self, selected, *_args):
+
+        file_path = next(iter(selected), None)
+
+        if not file_path:
+            return
+
+        if GTK_API_VERSION >= 4:
+            picture_bytes = self.picture_data.save_to_png_bytes().get_data()
+        else:
+            _success, picture_bytes = self.picture_data.save_to_bufferv(
+                type="png", option_keys=[], option_values=[])
+
+        core.userinfo.save_user_picture(file_path, picture_bytes)
+
+    def on_save_picture(self, *_args):
+
+        if self.picture_data is None:
+            return
+
+        current_date_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+
+        FileChooserSave(
+            parent=self.window,
             callback=self.on_save_picture_response,
-            initialdir=config.sections["transfers"]["downloaddir"],
-            initialfile="%s %s.jpg" % (self.user, time.strftime("%Y-%m-%d %H_%M_%S")),
-            title=_("Save as…")
-        )
+            initial_folder=core.downloads.get_default_download_folder(),
+            initial_file=f"{self.user}_{current_date_time}.png"
+        ).present()
 
-    def on_image_popup_menu(self, menu, widget):
+    def on_hide_picture(self, *_args):
+        self.hide_picture()
 
-        act = True
+    def on_refresh(self, *_args):
+        self.set_indeterminate_progress()
+        core.userinfo.show_user(self.user, refresh=True)
 
-        if self.image is None or self.image_pixbuf is None:
-            act = False
+    def on_focus(self, *_args):
+        self.userinfos.grab_focus()
+        return True
 
-        actions = menu.get_actions()
-        for (action_id, action) in actions.items():
-            action.set_enabled(act)
+    def on_close(self, *_args):
+        core.userinfo.remove_user(self.user)
 
-    def on_scroll(self, controller, x, y):
-
-        if y < 0:
-            self.make_zoom_in()
-        else:
-            self.make_zoom_out()
-
-    def on_scroll_event(self, widget, event):
-
-        if event.get_scroll_deltas().delta_y < 0:
-            self.make_zoom_in()
-        else:
-            self.make_zoom_out()
-
-        return True  # Don't scroll the Gtk.ScrolledWindow
-
-    def make_zoom_normal(self, *args):
-        self.make_zoom_in(zoom=True)
-
-    def make_zoom_in(self, *args, zoom=None):
-
-        def calc_zoom_in(a):
-            return a + a * self.actual_zoom / 100 + a * self.zoom_factor / 100
-
-        import gc
-
-        if self.image is None or self.image_pixbuf is None or self.actual_zoom > 100:
-            return
-
-        x = self.image_pixbuf.get_width()
-        y = self.image_pixbuf.get_height()
-
-        if zoom:
-            self.actual_zoom = 0
-            pixbuf_zoomed = self.image_pixbuf
-
-        else:
-            self.actual_zoom += self.zoom_factor
-            pixbuf_zoomed = self.image_pixbuf.scale_simple(
-                calc_zoom_in(x), calc_zoom_in(y), GdkPixbuf.InterpType.BILINEAR)
-
-        if Gtk.get_major_version() == 4:
-            self.image.set_pixbuf(pixbuf_zoomed)
-        else:
-            self.image.set_from_pixbuf(pixbuf_zoomed)
-
-        del pixbuf_zoomed
-
-        gc.collect()
-
-    def make_zoom_out(self, *args):
-
-        def calc_zoom_out(a):
-            return a + a * self.actual_zoom / 100 - a * self.zoom_factor / 100
-
-        import gc
-
-        if self.image is None or self.image_pixbuf is None:
-            return
-
-        x = self.image_pixbuf.get_width()
-        y = self.image_pixbuf.get_height()
-
-        self.actual_zoom -= self.zoom_factor
-
-        if calc_zoom_out(x) < 10 or calc_zoom_out(y) < 10:
-            self.actual_zoom += self.zoom_factor
-            return
-
-        pixbuf_zoomed = self.image_pixbuf.scale_simple(
-            calc_zoom_out(x), calc_zoom_out(y), GdkPixbuf.InterpType.BILINEAR)
-
-        if Gtk.get_major_version() == 4:
-            self.image.set_pixbuf(pixbuf_zoomed)
-        else:
-            self.image.set_from_pixbuf(pixbuf_zoomed)
-
-        del pixbuf_zoomed
-
-        gc.collect()
-
-    def on_close(self, *args):
-
-        del self.userinfos.pages[self.user]
-        self.frame.np.userinfo.remove_user(self.user)
-        self.userinfos.remove_page(self.Main)
-
-        if self.userinfos.get_n_pages() == 0:
-            self.frame.userinfo_status_page.show()
-
-    def on_close_all_tabs(self, *args):
+    def on_close_all_tabs(self, *_args):
         self.userinfos.remove_all_pages()

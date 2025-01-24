@@ -1,99 +1,266 @@
-name: In-Tree Unit Tests
+name: Tests
 
 on: [push, pull_request]
 
+env:
+  NICOTINE_NETWORK_TESTS: 1
+
 jobs:
 
-  ubuntu:
-    runs-on: ubuntu-latest
+  python:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
-        python: [3.5, 3.6, 3.7, 3.8, 3.9, '3.10', pypy-3.6, pypy-3.7]
+        python: ['3.6', '3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13',
+                 'pypy-3.6', 'pypy-3.7', 'pypy-3.8', 'pypy-3.9', 'pypy-3.10']
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+          cache: 'pip'
+          cache-dependency-path: setup.py
 
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install gir1.2-gtk-3.0 libgirepository1.0-dev
-          python -m pip install flake8 pygobject pylint
+          sudo apt install gettext gir1.2-gtk-3.0 libgirepository1.0-dev libgtk-3-bin
+          python -m pip install build setuptools wheel .[tests]
 
-      - name: Linter
-        run: |
-          python -m flake8
-          python -m pylint pynicotine test
+      - name: PEP 8 style checks
+        run: python -m pycodestyle
+
+      - name: Linting
+        run: python -m pylint --recursive=y .
 
       - name: Integration and unit tests
+        run: python -m unittest -v
+
+      - name: Build
+        run: python -m build
+
+      - name: Build without isolation
+        run: python3 -m build --no-isolation
+
+  ubuntu-debian:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['debian:bullseye', 'debian:bookworm', 'debian:unstable',
+                    'ubuntu:focal', 'ubuntu:jammy', 'ubuntu:noble', 'ubuntu:devel']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install autopkgtest dependencies
         run: |
-          xvfb-run python -m unittest
+          apt update
+          apt -y install autopkgtest
+
+      - name: Run autopkgtest
+        run: autopkgtest . -- null
+
+  fedora:
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['fedora:rawhide']
+        gtk: [3, 4]
+        platform: ['ubuntu-latest', 'ubuntu-24.04-arm']
+    runs-on: ${{ matrix.platform }}
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf -y install gettext gtk${{ matrix.gtk }} pylint python3 python3-build \
+            python3-gobject python3-pycodestyle python3-setuptools python3-wheel
+
+      - name: PEP 8 style checks
+        run: python3 -m pycodestyle
+
+      - name: Linting
+        run: python3 -m pylint --recursive=y .
+
+      - name: Integration and unit tests
+        run: python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m build
+
+      - name: Build without isolation
+        run: python3 -m build --no-isolation
+
+  opensuse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['opensuse/tumbleweed']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          zypper refresh
+          zypper -n install dejavu-fonts gettext-tools python312-build python312-gobject \
+            python312-gobject-Gdk python312-pycodestyle python312-pylint \
+            python312-setuptools python312-wheel typelib-1_0-Gtk-4_0
+
+      - name: PEP 8 style checks
+        run: python3.12 -m pycodestyle
+
+      - name: Linting
+        run: python3.12 -m pylint --recursive=y .
+
+      - name: Integration and unit tests
+        run: python3.12 -m unittest -v
+
+      - name: Build
+        run: python3.12 -m build
+
+      - name: Build without isolation
+        run: python3.12 -m build --no-isolation
+
+  alpine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['alpine:edge']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apk update
+          apk add font-dejavu gettext gtk4.0 py3-build py3-gobject3 py3-pycodestyle \
+            py3-pylint py3-setuptools py3-wheel
+
+      - name: PEP 8 style checks
+        run: python3 -m pycodestyle
+
+      - name: Linting
+        run: python3 -m pylint --recursive=y .
+
+      - name: Integration and unit tests
+        run: python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m build
+
+      - name: Build without isolation
+        run: python3 -m build --no-isolation
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            prefix: mingw-w64-x86_64
     defaults:
       run:
         shell: msys2 {0}
-    strategy:
-      matrix:
-        gtk: [3, 4]
-    env:
-      NICOTINE_GTK_VERSION: ${{ matrix.gtk }}
-      GSK_RENDERER: cairo
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v4
 
       - name: Setup msys2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: mingw64
+          release: false
           update: true
+          install: >-
+            ${{ matrix.prefix }}-ca-certificates
+            ${{ matrix.prefix }}-gettext-tools
+            ${{ matrix.prefix }}-gtk4
+            ${{ matrix.prefix }}-libadwaita
+            ${{ matrix.prefix }}-python-build
+            ${{ matrix.prefix }}-python-cx-freeze
+            ${{ matrix.prefix }}-python-gobject
+            ${{ matrix.prefix }}-python-pycodestyle
+            ${{ matrix.prefix }}-python-pylint
+            ${{ matrix.prefix }}-python-setuptools
+            ${{ matrix.prefix }}-python-wheel
+            ${{ matrix.prefix }}-webp-pixbuf-loader
 
-      - name: Install dependencies
-        run: |
-          pacman --noconfirm -S --needed mingw-w64-x86_64-python
-          python3 packaging/windows/dependencies_core.py
+      - name: Install additional dependencies
+        run: python3 packaging/windows/dependencies.py
 
-      - name: Linter
-        run: |
-          python3 -m flake8
-          python3 -m pylint pynicotine test
+      - name: PEP 8 style checks
+        run: python3 -m pycodestyle
+
+      - name: Linting
+        run: python3 -m pylint --recursive=y .
 
       - name: Integration and unit tests
-        run: |
-          python3 -m unittest
+        run: python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m build
+
+      - name: Build without isolation
+        run: python3 -m build --no-isolation
 
   macos:
-    runs-on: macos-latest
     strategy:
+      fail-fast: false
       matrix:
-        gtk: [3, 4]
-    env:
-      NICOTINE_GTK_VERSION: ${{ matrix.gtk }}
+        include:
+          - arch: x86_64
+            platform: macos-13
+          - arch: arm64
+            platform: macos-14
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v4
+
+      - name: Set system language
+        run: defaults write NSGlobalDomain AppleLanguages "(en-US)"
+
+      - name: Create Python virtual environment
+        run: |
+          brew uninstall --ignore-dependencies python@3.12
+          brew install --overwrite python@3.12
+          python3.12 -m venv venv
 
       - name: Install dependencies
-        run: |
-          python3 packaging/macos/dependencies_core.py
+        run: venv/bin/python3 packaging/macos/dependencies.py
 
-      - name: Linter
-        run: |
-          python3 -m flake8
-          python3 -m pylint pynicotine test
+      - name: PEP 8 style checks
+        run: venv/bin/python3 -m pycodestyle
+
+      - name: Linting
+        run: venv/bin/python3 -m pylint --recursive=y .
 
       - name: Integration and unit tests
-        run: |
-          python3 -m unittest
+        run: venv/bin/python3 -m unittest -v
+
+      - name: Build
+        run: venv/bin/python3 -m build
+
+      - name: Build without isolation
+        run: venv/bin/python3 -m build --no-isolation

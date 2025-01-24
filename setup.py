@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
-# COPYRIGHT (C) 2016-2017 Michael Labouebe <gfarmerfr@free.fr>
-# COPYRIGHT (C) 2009-2010 Quinox <quinox@users.sf.net>
-# COPYRIGHT (C) 2009 Hedonist <ak@sensi.org>
-# COPYRIGHT (C) 2006-2009 Daelstorm <daelstorm@gmail.com>
-# COPYRIGHT (C) 2008-2009 eL_vErDe <gandalf@le-vert.net>
+# COPYRIGHT (C) 2023-2024 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -22,96 +17,95 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""
-    To install Nicotine+ on a GNU/Linux distribution, run:
-    pip3 install .
-"""
-
-import glob
 import os
-import sys
+import subprocess
 
-from setuptools import setup
-from pkgutil import walk_packages
-
-import pynicotine
-
-from pynicotine.config import config
+from setuptools import setup  # pylint: disable=import-error
 
 
-def generate_translations():
+def build_translations():
+    """Builds .mo translation files in the 'locale' folder of the package."""
 
-    mo_entries = []
-    languages = []
+    base_path = os.path.dirname(os.path.realpath(__file__))
+    locale_path = os.path.join(base_path, "pynicotine", "locale")
 
-    for po_file in glob.glob("po/*.po"):
-        lang = os.path.basename(po_file[:-3])
-        languages.append(lang)
+    with open(os.path.join(base_path, "po", "LINGUAS"), encoding="utf-8") as file_handle:
+        languages = file_handle.read().splitlines()
 
-        mo_dir = os.path.join("mo", lang, "LC_MESSAGES")
-        mo_file = os.path.join(mo_dir, "nicotine.mo")
+    for language_code in languages:
+        lang_folder_path = os.path.join(locale_path, language_code)
+        lc_messages_folder_path = os.path.join(lang_folder_path, "LC_MESSAGES")
+        po_file_path = os.path.join(base_path, "po", f"{language_code}.po")
+        mo_file_path = os.path.join(lc_messages_folder_path, "nicotine.mo")
 
-        if not os.path.exists(mo_dir):
-            os.makedirs(mo_dir)
+        if not os.path.exists(lc_messages_folder_path):
+            os.makedirs(lc_messages_folder_path)
 
-        exit_code = os.system("msgfmt --check " + po_file + " -o " + mo_file)
+        for path in (locale_path, lang_folder_path, lc_messages_folder_path):
+            with open(os.path.join(path, "__init__.py"), "wb") as file_handle:
+                # Create empty file
+                pass
 
-        if exit_code > 0:
-            sys.exit(exit)
+        subprocess.check_call(["msgfmt", "--check", po_file_path, "-o", mo_file_path])
 
-        targetpath = os.path.join("share", "locale", lang, "LC_MESSAGES")
-        mo_entries.append((targetpath, [mo_file]))
+    # Merge translations into .desktop and appdata files
+    with os.scandir(os.path.join(base_path, "data")) as entries:
+        for entry in entries:
+            if entry.name.endswith(".desktop.in"):
+                subprocess.check_call(["msgfmt", "--desktop", f"--template={entry.path}", "-d", "po",
+                                       "-o", entry.path[:-3]])
 
-    # Merge translations into .desktop and metainfo files
-    for desktop_file in glob.glob("data/*.desktop.in"):
-        os.system("msgfmt --desktop --template=" + desktop_file + " -d po -o " + desktop_file[:-3])
-
-    for metainfo_file in glob.glob("data/*.metainfo.xml.in"):
-        os.system("msgfmt --xml --template=" + metainfo_file + " -d po -o " + metainfo_file[:-3])
-
-    return mo_entries, languages
+            elif entry.name.endswith(".appdata.xml.in"):
+                subprocess.check_call(["msgfmt", "--xml", f"--template={entry.path}", "-d", "po",
+                                       "-o", entry.path[:-3]])
 
 
-if __name__ == '__main__':
-
-    # Specify a description for the PyPi project page
-    LONG_DESCRIPTION = """Nicotine+ is a graphical client for the Soulseek peer-to-peer
-network.
-
-Nicotine+ aims to be a pleasant, free and open source (FOSS)
-alternative to the official Soulseek client, providing additional
-functionality while keeping current with the Soulseek protocol."""
-
-    # Specify included files
-    PACKAGES = ["pynicotine"] + \
-        [name for importer, name, ispkg in walk_packages(path=pynicotine.__path__, prefix="pynicotine.") if ispkg]
-
-    PACKAGE_DATA = dict((package, ["*.bin", "*.md", "*.py", "*.svg", "*.ui", "PLUGININFO"]) for package in PACKAGES)
-
-    DATA_FILES = [
-        ("share/applications", glob.glob("data/*.desktop")),
-        ("share/metainfo", glob.glob("data/*.metainfo.xml")),
-        ("share/icons/hicolor/scalable/apps", glob.glob("pynicotine/gtkgui/icons/hicolor/scalable/apps/*.svg")),
-        ("share/icons/hicolor/symbolic/apps", glob.glob("pynicotine/gtkgui/icons/hicolor/symbolic/apps/*.svg")),
-        ("share/doc/nicotine", glob.glob("[!404.md]*.md") + glob.glob("doc/*.md") + ["COPYING"]),
-        ("share/man/man1", glob.glob("data/*.1"))
-    ] + generate_translations()[0]
-
-    # Run setup
+if __name__ == "__main__":
+    build_translations()
     setup(
-        name="nicotine-plus",
-        version=config.version,
-        license="GPLv3+",
-        description="Graphical client for the Soulseek peer-to-peer network",
-        long_description=LONG_DESCRIPTION,
-        author="Nicotine+ Team",
-        author_email="nicotine-team@lists.launchpad.net",
-        url="https://nicotine-plus.org/",
-        platforms="any",
-        packages=PACKAGES,
-        package_data=PACKAGE_DATA,
-        scripts=["nicotine"],
-        data_files=DATA_FILES,
-        python_requires=">=3.5",
-        install_requires=["PyGObject>=3.18"]
+        data_files=[
+            ("share/applications", ["data/org.nicotine_plus.Nicotine.desktop"]),
+            ("share/metainfo", ["data/org.nicotine_plus.Nicotine.appdata.xml"]),
+            ("share/man/man1", ["data/nicotine.1"]),
+            ("share/icons/hicolor/16x16/apps",
+                ["pynicotine/gtkgui/icons/hicolor/16x16/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/16x16@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/16x16@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/24x24/apps",
+                ["pynicotine/gtkgui/icons/hicolor/24x24/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/24x24@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/24x24@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/32x32/apps",
+                ["pynicotine/gtkgui/icons/hicolor/32x32/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/32x32@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/32x32@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/48x48/apps",
+                ["pynicotine/gtkgui/icons/hicolor/48x48/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/48x48@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/48x48@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/64x64/apps",
+                ["pynicotine/gtkgui/icons/hicolor/64x64/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/64x64@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/64x64@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/128x128/apps",
+                ["pynicotine/gtkgui/icons/hicolor/128x128/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/128x128@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/128x128@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/256x256/apps",
+                ["pynicotine/gtkgui/icons/hicolor/256x256/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/256x256@2/apps",
+                ["pynicotine/gtkgui/icons/hicolor/256x256@2/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/scalable/apps",
+                ["pynicotine/gtkgui/icons/hicolor/scalable/apps/org.nicotine_plus.Nicotine.svg"]),
+            ("share/icons/hicolor/scalable/apps",
+                ["pynicotine/gtkgui/icons/hicolor/scalable/apps/org.nicotine_plus.Nicotine-away.svg"]),
+            ("share/icons/hicolor/scalable/apps",
+                ["pynicotine/gtkgui/icons/hicolor/scalable/apps/org.nicotine_plus.Nicotine-connect.svg"]),
+            ("share/icons/hicolor/scalable/apps",
+                ["pynicotine/gtkgui/icons/hicolor/scalable/apps/org.nicotine_plus.Nicotine-disconnect.svg"]),
+            ("share/icons/hicolor/scalable/apps",
+                ["pynicotine/gtkgui/icons/hicolor/scalable/apps/org.nicotine_plus.Nicotine-msg.svg"]),
+            ("share/icons/hicolor/symbolic/apps",
+                ["pynicotine/gtkgui/icons/hicolor/symbolic/apps/org.nicotine_plus.Nicotine-symbolic.svg"])
+        ]
     )

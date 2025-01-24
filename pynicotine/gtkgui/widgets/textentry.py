@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -16,167 +16,243 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from os.path import commonprefix
+import os
 
+import gi
 from gi.repository import Gtk
 
-from pynicotine import slskmessages
 from pynicotine.config import config
-from pynicotine.gtkgui.utils import setup_accelerator
-from pynicotine.logfacility import log
-from pynicotine.utils import add_alias
-from pynicotine.utils import get_alias
-from pynicotine.utils import is_alias
-from pynicotine.utils import unalias
-
-
-""" Text Entry/View-related """
+from pynicotine.gtkgui.application import GTK_API_VERSION
+from pynicotine.gtkgui.widgets.accelerator import Accelerator
+from pynicotine.gtkgui.widgets.theme import add_css_class
 
 
 class ChatEntry:
-    """ Custom text entry with support for chat commands and completions """
+    """Custom text entry with support for chat commands and completions."""
 
-    def __init__(self, frame, entry, entity, message_class, send_message, command_list, is_chatroom=False):
+    def __init__(self, application, send_message_callback, command_callback, enable_spell_check=False):
 
-        self.frame = frame
-        self.entry = entry
-        self.entity = entity
-        self.message_class = message_class
-        self.send_message = send_message
-        self.command_list = command_list
-        self.is_chatroom = is_chatroom
+        self.application = application
+        self.widget = Gtk.Entry(
+            hexpand=True, placeholder_text=_("Send message…"), primary_icon_name="mail-send-symbolic",
+            sensitive=False, show_emoji_icon=True, width_chars=8, visible=True
+        )
+        self.send_message_callback = send_message_callback
+        self.command_callback = command_callback
+        self.spell_checker = None
+        self.entity = None
+        self.chat_view = None
+        self.unsent_messages = {}
+        self.completions = {}
+        self.current_completions = []
+        self.completion_index = 0
+        self.midway_completion = False  # True if the user just used tab completion
+        self.selecting_completion = False  # True if the list box is open with suggestions
+        self.is_inserting_completion = False
 
-        self.completion_list = None
-        self.completion_iters = {}
+        self.model = Gtk.ListStore(str)
+        self.column_numbers = list(range(self.model.get_n_columns()))
 
-        entry.connect("activate", self.on_enter)
-        self.entry_changed_handler = entry.connect("changed", self.on_entry_changed)
-        setup_accelerator("<Shift>Tab", entry, self.on_tab_complete_accelerator, True)
-        setup_accelerator("Tab", entry, self.on_tab_complete_accelerator)
+        self.entry_completion = Gtk.EntryCompletion(model=self.model, popup_single_match=False)
+        self.entry_completion.set_text_column(0)
+        self.entry_completion.set_match_func(self.entry_completion_find_match)
+        self.entry_completion.connect("match-selected", self.entry_completion_found_match)
 
-        # Emoji Picker
-        try:
-            self.entry.set_property("show-emoji-icon", True)
+        self.widget.set_completion(self.entry_completion)
+        CompletionEntry.patch_popover_hide_broadway(self.widget)
 
-        except TypeError:
-            # GTK version not supported
-            pass
+        self.widget.connect("activate", self.on_send_message)
+        self.widget.connect("changed", self.on_changed)
+        self.widget.connect("icon-press", self.on_icon_pressed)
 
-        # Spell Check
-        if config.sections["ui"]["spellcheck"]:
-            if not self.frame.spell_checker:
-                self.frame.init_spell_checker()
+        Accelerator("<Shift>Tab", self.widget, self.on_tab_complete_accelerator, True)
+        Accelerator("Tab", self.widget, self.on_tab_complete_accelerator)
+        Accelerator("Down", self.widget, self.on_page_down_accelerator)
+        Accelerator("Page_Down", self.widget, self.on_page_down_accelerator)
+        Accelerator("Page_Up", self.widget, self.on_page_up_accelerator)
 
-            if self.frame.spell_checker:
-                from gi.repository import Gspell
-                spell_buffer = Gspell.EntryBuffer.get_from_gtk_entry_buffer(entry.get_buffer())
-                spell_buffer.set_spell_checker(self.frame.spell_checker)
-                spell_view = Gspell.Entry.get_from_gtk_entry(entry)
-                spell_view.set_inline_spell_checking(True)
+        self.set_spell_check_enabled(enable_spell_check)
 
-        self.midwaycompletion = False  # True if the user just used tab completion
-        self.completions = {}  # Holds temp. information about tab completoin
+    def destroy(self):
 
-        completion = Gtk.EntryCompletion()
-        list_store = Gtk.ListStore(str)
-        completion.set_model(list_store)
-        completion.set_text_column(0)
-        completion.set_match_func(self.entry_completion_find_match)
-        completion.connect("match-selected", self.entry_completion_found_match)
+        if self.spell_checker is not None:
+            self.spell_checker.destroy()
 
-        entry.set_completion(completion)
-        self.column_numbers = list(range(list_store.get_n_columns()))
+        self.__dict__.clear()
+
+    def clear_unsent_message(self, entity):
+        self.unsent_messages.pop(entity, None)
+
+    def grab_focus(self):
+        self.widget.grab_focus()
+
+    def grab_focus_without_selecting(self):
+        self.widget.grab_focus_without_selecting()
+
+    def get_buffer(self):
+        return self.widget.get_buffer()
+
+    def get_position(self):
+        return self.widget.get_position()
+
+    def get_sensitive(self):
+        return self.widget.get_sensitive()
+
+    def get_text(self):
+        return self.widget.get_text()
+
+    def is_completion_enabled(self):
+        return config.sections["words"]["tab"] or config.sections["words"]["dropdown"]
+
+    def insert_text(self, new_text, position):
+        self.widget.insert_text(new_text, position)
+
+    def delete_text(self, start_pos, end_pos):
+        self.widget.delete_text(start_pos, end_pos)
 
     def add_completion(self, item):
 
-        if not config.sections["words"]["tab"]:
+        if not self.is_completion_enabled():
             return
 
-        if item in self.completion_list:
+        if item in self.completions:
             return
-
-        self.completion_list.append(item)
 
         if config.sections["words"]["dropdown"]:
-            model = self.entry.get_completion().get_model()
-            self.completion_iters[item] = model.insert_with_valuesv(-1, self.column_numbers, [item])
-
-    def get_completion(self, part, list):
-
-        matches = self.get_completions(part, list)
-
-        if not matches:
-            return None, 0
-
-        if len(matches) == 1:
-            return matches[0], 1
+            iterator = self.model.insert_with_valuesv(-1, self.column_numbers, [item])
         else:
-            return commonprefix([x.lower() for x in matches]), 0
+            iterator = None
 
-    def get_completions(self, part, list):
-
-        lowerpart = part.lower()
-        matches = [x for x in list if x.lower().startswith(lowerpart) and len(x) >= len(part)]
-        return matches
+        self.completions[item] = iterator
 
     def remove_completion(self, item):
 
-        if not config.sections["words"]["tab"]:
+        if not self.is_completion_enabled():
             return
 
-        if item not in self.completion_list:
+        iterator = self.completions.pop(item, None)
+
+        if iterator is not None:
+            self.model.remove(iterator)
+
+    def set_parent(self, entity=None, container=None, chat_view=None):
+
+        if self.entity:
+            self.unsent_messages[self.entity] = self.widget.get_text()
+
+        self.entity = entity
+        self.chat_view = chat_view
+
+        parent = self.widget.get_parent()
+
+        if parent is not None:
+            parent.remove(self.widget)
+
+        if container is None:
             return
 
-        self.completion_list.remove(item)
+        unsent_message = self.unsent_messages.get(entity, "")
 
-        if not config.sections["words"]["dropdown"]:
+        if GTK_API_VERSION >= 4:
+            container.append(self.widget)  # pylint: disable=no-member
+        else:
+            container.add(self.widget)     # pylint: disable=no-member
+
+        self.widget.set_text(unsent_message)
+        self.widget.set_position(-1)
+
+    def set_completions(self, completions):
+
+        if self.entry_completion is None:
             return
-
-        model = self.entry.get_completion().get_model()
-        iterator = self.completion_iters[item]
-        model.remove(iterator)
-        del self.completion_iters[item]
-
-    def set_completion_list(self, completion_list):
 
         config_words = config.sections["words"]
 
-        completion = self.entry.get_completion()
-        completion.set_popup_single_match(not config_words["onematch"])
-        completion.set_minimum_key_length(config_words["characters"])
-        completion.set_inline_completion(False)
+        self.entry_completion.set_popup_completion(config_words["dropdown"])
+        self.entry_completion.set_minimum_key_length(config_words["characters"])
 
-        model = completion.get_model()
-        model.clear()
-        self.completion_iters.clear()
+        self.model.clear()
+        self.completions.clear()
 
-        if not config_words["tab"]:
+        if not self.is_completion_enabled():
             return
 
-        if completion_list is None:
-            completion_list = []
-
-        self.completion_list = completion_list
-
-        if not config_words["dropdown"]:
-            completion.set_popup_completion(False)
-            return
-
-        for word in completion_list:
+        for word in sorted(completions):
             word = str(word)
-            self.completion_iters[word] = model.insert_with_valuesv(-1, self.column_numbers, [word])
 
-        completion.set_popup_completion(True)
+            if config_words["dropdown"]:
+                iterator = self.model.insert_with_valuesv(-1, self.column_numbers, [word])
+            else:
+                iterator = None
 
-    def entry_completion_find_match(self, completion, entry_text, iterator):
+            self.completions[word] = iterator
+
+    def set_spell_check_enabled(self, enabled):
+
+        if self.spell_checker is not None:
+            self.spell_checker.set_enabled(enabled)
+            return
+
+        if enabled and SpellChecker.is_available():
+            self.spell_checker = SpellChecker(self.widget)
+
+    def set_position(self, position):
+        self.widget.set_position(position)
+
+    def set_sensitive(self, sensitive):
+        self.widget.set_sensitive(sensitive)
+
+    def set_text(self, text):
+        self.widget.set_text(text)
+
+    def set_visible(self, visible):
+        self.widget.set_visible(visible)
+
+    def on_send_message(self, *_args):
+
+        text = self.widget.get_text().strip()
+
+        if not text:
+            self.chat_view.scroll_bottom()
+            return
+
+        is_double_slash_cmd = text.startswith("//")
+        is_single_slash_cmd = (text.startswith("/") and not is_double_slash_cmd)
+
+        if not is_single_slash_cmd:
+            # Regular chat message
+
+            self.widget.set_text("")
+
+            if is_double_slash_cmd:
+                # Remove first slash and send the rest of the command as plain text
+                text = text[1:]
+
+            self.send_message_callback(self.entity, text)
+            return
+
+        cmd, _separator, args = text.partition(" ")
+        args = args.strip()
+
+        if not self.command_callback(self.entity, cmd[1:], args):
+            return
+
+        # Clear chat entry
+        self.widget.set_text("")
+
+    def on_icon_pressed(self, _entry, icon_pos, *_args):
+        if icon_pos == Gtk.EntryIconPosition.PRIMARY:
+            self.on_send_message()
+
+    def entry_completion_find_match(self, _completion, entry_text, iterator):
 
         if not entry_text:
             return False
 
         # Get word to the left of current position
         if " " in entry_text:
-            ix = self.entry.get_position()
-            split_key = entry_text[:ix].split(" ")[-1]
+            i = self.widget.get_position()
+            split_key = entry_text[:i].split(" ")[-1]
         else:
             split_key = entry_text
 
@@ -184,16 +260,17 @@ class ChatEntry:
             return False
 
         # Case-insensitive matching
-        item_text = completion.get_model().get_value(iterator, 0).lower()
+        item_text = self.model.get_value(iterator, 0).lower()
 
         if item_text.startswith(split_key) and item_text != split_key:
+            self.selecting_completion = True
             return True
 
         return False
 
-    def entry_completion_found_match(self, completion, model, iterator):
+    def entry_completion_found_match(self, _completion, model, iterator):
 
-        current_text = self.entry.get_text()
+        current_text = self.widget.get_text()
         completion_value = model.get_value(iterator, 0)
 
         # if more than a word has been typed, we throw away the
@@ -201,245 +278,36 @@ class ChatEntry:
         # to replace it with the matching word
 
         if " " in current_text:
-            ix = self.entry.get_position()
-            prefix = " ".join(current_text[:ix].split(" ")[:-1])
-            suffix = " ".join(current_text[ix:].split(" "))
+            i = self.widget.get_position()
+            prefix = " ".join(current_text[:i].split(" ")[:-1])
+            suffix = " ".join(current_text[i:].split(" "))
 
             # add the matching word
-            new_text = "%s %s%s" % (prefix, completion_value, suffix)
+            new_text = f"{prefix} {completion_value}{suffix}"
             # set back the whole text
-            self.entry.set_text(new_text)
+            self.widget.set_text(new_text)
             # move the cursor at the end
-            self.entry.set_position(len(prefix) + len(completion_value) + 1)
+            self.widget.set_position(len(prefix) + len(completion_value) + 1)
         else:
-            self.entry.set_text(completion_value)
-            self.entry.set_position(-1)
+            self.widget.set_text(completion_value)
+            self.widget.set_position(-1)
 
         # stop the event propagation
         return True
 
-    def on_enter(self, widget):
+    def on_changed(self, *_args):
 
-        if not self.frame.np.logged_in:
-            return
+        # If the entry was modified, and we don't block entry_changed_handler, we're no longer completing
+        if not self.is_inserting_completion:
+            self.midway_completion = self.selecting_completion = False
 
-        text = self.entry.get_text()
-
-        if not text:
-            return
-
-        if is_alias(text):
-            alias_text = get_alias(text)
-
-            if not alias_text:
-                log.add(_('Alias "%s" returned nothing'), text)
-                return
-
-            text = alias_text
-
-        is_double_slash_cmd = text.startswith("//")
-        is_single_slash_cmd = (text.startswith("/") and not is_double_slash_cmd)
-
-        if not is_single_slash_cmd or text.startswith("/me"):
-            # Regular chat message (/me is sent as plain text)
-
-            self.entry.set_text("")
-
-            if is_double_slash_cmd:
-                # Remove first slash and send the rest of the command as plain text
-                text = text[1:]
-
-            self.send_message(self.entity, text)
-            return
-
-        cmd_split = text.split(maxsplit=1)
-        cmd = cmd_split[0]
-
-        if cmd + " " not in self.command_list:
-            log.add(_("Command %s is not recognized"), cmd)
-            return
-
-        # Clear chat entry
-        self.entry.set_text("")
-
-        if len(cmd_split) == 2:
-            args = arg_self = cmd_split[1]
-        else:
-            args = ""
-            arg_self = "" if self.is_chatroom else self.entity
-
-        if cmd in ("/alias", "/al"):
-            parent = self.frame.np.chatrooms if self.is_chatroom else self.frame.np.privatechats
-            parent.echo_message(self.entity, add_alias(args))
-
-            if config.sections["words"]["aliases"]:
-                self.frame.update_completions()
-
-        elif cmd in ("/unalias", "/un"):
-            parent = self.frame.np.chatrooms if self.is_chatroom else self.frame.np.privatechats
-            parent.echo_message(self.entity, unalias(args))
-
-            if config.sections["words"]["aliases"]:
-                self.frame.update_completions()
-
-        elif cmd in ("/w", "/whois", "/info"):
-            if arg_self:
-                self.frame.np.userinfo.request_user_info(arg_self)
-                self.frame.change_main_page("userinfo")
-
-        elif cmd in ("/b", "/browse"):
-            if arg_self:
-                self.frame.np.userbrowse.browse_user(arg_self)
-                self.frame.change_main_page("userbrowse")
-
-        elif cmd == "/ip":
-            if arg_self:
-                self.frame.np.request_ip_address(arg_self)
-
-        elif cmd == "/pm":
-            if args:
-                self.frame.np.privatechats.show_user(args)
-                self.frame.change_main_page("private")
-
-        elif cmd in ("/m", "/msg"):
-            if args:
-                args_split = args.split(" ", maxsplit=1)
-                user = args_split[0]
-                msg = None
-
-                if len(args_split) == 2:
-                    msg = args_split[1]
-
-                if msg:
-                    self.frame.np.privatechats.show_user(user)
-                    self.frame.np.privatechats.send_message(user, msg)
-                    self.frame.change_main_page("private")
-
-        elif cmd in ("/s", "/search"):
-            if args:
-                self.frame.SearchMethod.set_active(0)
-                self.frame.SearchEntry.set_text(args)
-                self.frame.on_search(self.frame.SearchEntry)
-                self.frame.change_main_page("search")
-
-        elif cmd in ("/us", "/usearch"):
-            args_split = args.split(" ", maxsplit=1)
-
-            if len(args_split) == 2:
-                self.frame.SearchMethod.set_active(3)
-                self.frame.SearchEntry.set_text(args_split[1])
-                self.frame.UserSearchEntry.set_text(args_split[0])
-                self.frame.on_search(self.frame.SearchEntry)
-                self.frame.change_main_page("search")
-
-        elif cmd in ("/rs", "/rsearch"):
-            if args:
-                self.frame.SearchMethod.set_active(2)
-                self.frame.SearchEntry.set_text(args)
-                self.frame.on_search(self.frame.SearchEntry)
-                self.frame.change_main_page("search")
-
-        elif cmd in ("/bs", "/bsearch"):
-            if args:
-                self.frame.SearchMethod.set_active(1)
-                self.frame.SearchEntry.set_text(args)
-                self.frame.on_search(self.frame.SearchEntry)
-                self.frame.change_main_page("search")
-
-        elif cmd in ("/j", "/join"):
-            if args:
-                self.frame.np.queue.append(slskmessages.JoinRoom(args))
-
-        elif cmd in ("/l", "/leave", "/p", "/part"):
-            if args:
-                self.frame.np.queue.append(slskmessages.LeaveRoom(args))
-            else:
-                self.frame.np.queue.append(slskmessages.LeaveRoom(self.entity))
-
-        elif cmd in ("/ad", "/add", "/buddy"):
-            if args:
-                self.frame.np.userlist.add_user(args)
-
-        elif cmd in ("/rem", "/unbuddy"):
-            if args:
-                self.frame.np.userlist.remove_user(args)
-
-        elif cmd == "/ban":
-            if args:
-                self.frame.np.network_filter.ban_user(args)
-
-        elif cmd == "/ignore":
-            if args:
-                self.frame.np.network_filter.ignore_user(args)
-
-        elif cmd == "/ignoreip":
-            if args:
-                self.frame.np.network_filter.ignore_ip(args)
-
-        elif cmd == "/unban":
-            if args:
-                self.frame.np.network_filter.unban_user(args)
-
-        elif cmd == "/unignore":
-            if args:
-                self.frame.np.network_filter.unignore_user(args)
-
-        elif cmd == "/ctcpversion":
-            if arg_self:
-                self.frame.np.privatechats.show_user(arg_self)
-                self.frame.np.privatechats.send_message(arg_self, self.frame.np.privatechats.CTCP_VERSION)
-
-        elif cmd in ("/clear", "/cl"):
-            if self.is_chatroom:
-                parent = self.frame.chatrooms.pages[self.entity]
-            else:
-                parent = self.frame.privatechat.pages[self.entity]
-
-            parent.chat_textview.clear()
-
-        elif cmd in ("/a", "/away"):
-            self.frame.on_away()
-
-        elif cmd in ("/q", "/quit", "/exit"):
-            self.frame.np.quit()
-
-        elif cmd in ("/c", "/close"):
-            self.frame.privatechat.pages[self.entity].on_close()
-
-        elif cmd == "/now":
-            self.frame.np.now_playing.display_now_playing(
-                callback=lambda np_message: self.send_message(self.entity, np_message))
-
-        elif cmd == "/rescan":
-            # Rescan public shares if needed
-            if not config.sections["transfers"]["friendsonly"] and config.sections["transfers"]["shared"]:
-                self.frame.on_rescan()
-
-            # Rescan buddy shares if needed
-            if config.sections["transfers"]["enablebuddyshares"]:
-                self.frame.on_buddy_rescan()
-
-        elif cmd == "/toggle":
-            if args:
-                self.frame.np.pluginhandler.toggle_plugin(args)
-
-        elif self.is_chatroom:
-            self.frame.np.pluginhandler.trigger_public_command_event(self.entity, cmd[1:], args)
-
-        elif not self.is_chatroom:
-            self.frame.np.pluginhandler.trigger_private_command_event(self.entity, cmd[1:], args)
-
-    def on_entry_changed(self, *args):
-        # If the entry was modified, and we don't block the handler, we're no longer completing
-        self.midwaycompletion = False
-
-    def on_tab_complete_accelerator(self, widget, state, backwards=False):
-        """ Tab and Shift+Tab: tab complete chat """
+    def on_tab_complete_accelerator(self, _widget, _state, backwards=False):
+        """Tab and Shift+Tab: tab complete chat."""
 
         if not config.sections["words"]["tab"]:
             return False
 
-        text = self.entry.get_text()
+        text = self.widget.get_text()
 
         if not text:
             return False
@@ -449,91 +317,273 @@ class ChatEntry:
         #   1  4  7  10 13      16 19 22 25 28 31
         #    2  5  8  11 14      17 20 23 26 29 32
         #
-        # ix = 16
-        # text = Miss
+        # i = 16
+        # last_word = Miss
         # preix = 12
-        ix = self.entry.get_position()
-        text = text[:ix].split(" ")[-1]
-        preix = ix - len(text)
 
-        if not config.sections["words"]["cycle"]:
-            completion, single = self.get_completion(text, self.completion_list)
-            if completion:
-                if single and ix == len(text) and not text.startswith("/"):
-                    completion += ": "
-                self.entry.delete_text(preix, ix)
-                self.entry.insert_text(completion, preix)
-                self.entry.set_position(preix + len(completion))
+        i = self.widget.get_position()
+        last_word = text[:i].split(" ")[-1]
+        last_word_len = len(last_word)
+        preix = i - last_word_len
 
-            return True
+        if not self.midway_completion:
+            if last_word_len < 1:
+                return False
 
-        if not self.midwaycompletion:
-            self.completions['completions'] = self.get_completions(text, self.completion_list)
+            last_word_lower = last_word.lower()
+            self.current_completions = [
+                x for x in self.completions if x.lower().startswith(last_word_lower) and len(x) >= last_word_len
+            ]
 
-            if self.completions['completions']:
-                self.midwaycompletion = True
-                self.completions['currentindex'] = -1
-                currentnick = text
+            if self.current_completions:
+                self.midway_completion = True
+                self.completion_index = -1
+                current_word = last_word
         else:
-            currentnick = self.completions['completions'][self.completions['currentindex']]
+            current_word = self.current_completions[self.completion_index]
 
-        if self.midwaycompletion:
-            # We're still completing, block handler to avoid modifying midwaycompletion value
-            with self.entry.handler_block(self.entry_changed_handler):
-                self.entry.delete_text(ix - len(currentnick), ix)
-                direction = 1  # Forward cycle
+        if self.midway_completion:
+            # We're still completing, block entry_changed_handler to avoid modifying midway_completion value
+            self.is_inserting_completion = True
+            self.widget.delete_text(i - len(current_word), i)
 
-                if backwards:
-                    direction = -1  # Backward cycle
+            direction = -1 if backwards else 1
+            self.completion_index = ((self.completion_index + direction) % len(self.current_completions))
 
-                self.completions['currentindex'] = ((self.completions['currentindex'] + direction) %
-                                                    len(self.completions['completions']))
-
-                newnick = self.completions['completions'][self.completions['currentindex']]
-                self.entry.insert_text(newnick, preix)
-                self.entry.set_position(preix + len(newnick))
+            new_word = self.current_completions[self.completion_index]
+            self.widget.insert_text(new_word, preix)
+            self.widget.set_position(preix + len(new_word))
+            self.is_inserting_completion = False
 
         return True
+
+    def on_page_down_accelerator(self, *_args):
+        """Page_Down, Down - Scroll chat view to bottom, and keep input focus in
+        entry widget."""
+
+        if self.selecting_completion:
+            return False
+
+        self.chat_view.scroll_bottom()
+        return True
+
+    def on_page_up_accelerator(self, *_args):
+        """Page_Up - Move up into view to begin scrolling message history."""
+
+        if self.selecting_completion:
+            return False
+
+        self.chat_view.grab_focus()
+        return True
+
+
+class CompletionEntry:
+
+    def __init__(self, widget, model=None, column=0):
+
+        self.model = model
+        self.column = column
+        self.completions = {}
+
+        if model is None:
+            self.model = model = Gtk.ListStore(str)
+            self.column_numbers = list(range(self.model.get_n_columns()))
+
+        completion = Gtk.EntryCompletion(inline_completion=True, inline_selection=True,
+                                         popup_single_match=False, model=model)
+        completion.set_text_column(column)
+        completion.set_match_func(self.entry_completion_find_match)
+
+        widget.set_completion(completion)
+        self.patch_popover_hide_broadway(widget)
+
+    def destroy(self):
+        self.__dict__.clear()
+
+    def add_completion(self, item):
+        if item not in self.completions:
+            self.completions[item] = self.model.insert_with_valuesv(-1, self.column_numbers, [item])
+
+    def remove_completion(self, item):
+
+        iterator = self.completions.pop(item, None)
+
+        if iterator is not None:
+            self.model.remove(iterator)
+
+    def clear(self):
+        self.model.clear()
+
+    def entry_completion_find_match(self, _completion, entry_text, iterator):
+
+        if not entry_text:
+            return False
+
+        item_text = self.model.get_value(iterator, self.column)
+
+        if not item_text:
+            return False
+
+        if item_text.lower().startswith(entry_text.lower()):
+            return True
+
+        return False
+
+    @classmethod
+    def patch_popover_hide_broadway(cls, entry):
+
+        # Workaround for GTK 4 bug where broadwayd uses a lot of CPU after hiding popover
+        if GTK_API_VERSION >= 4 and os.environ.get("GDK_BACKEND") == "broadway":
+            completion_popover = list(entry)[-1]
+            completion_popover.connect("hide", cls.on_popover_hide_broadway)
+
+    @staticmethod
+    def on_popover_hide_broadway(popover):
+        popover.unrealize()
+
+
+class SpellChecker:
+
+    checker = None
+    module = None
+
+    def __init__(self, entry):
+
+        self.buffer = None
+        self.entry = None
+
+        self._set_entry(entry)
+
+    @classmethod
+    def _load_module(cls):
+
+        if GTK_API_VERSION >= 4:
+            # No spell checkers available in GTK 4 yet
+            return
+
+        if SpellChecker.module is not None:
+            return
+
+        try:
+            gi.require_version("Gspell", "1")
+            from gi.repository import Gspell
+            SpellChecker.module = Gspell
+
+        except (ImportError, ValueError):
+            pass
+
+    def _set_entry(self, entry):
+
+        if self.entry is not None:
+            return
+
+        # Attempt to load spell check module in case it was recently installed
+        self._load_module()
+
+        if SpellChecker.module is None:
+            return
+
+        if SpellChecker.checker is None:
+            SpellChecker.checker = SpellChecker.module.Checker()
+
+        self.buffer = SpellChecker.module.EntryBuffer.get_from_gtk_entry_buffer(entry.get_buffer())
+        self.buffer.set_spell_checker(SpellChecker.checker)
+
+        self.entry = SpellChecker.module.Entry.get_from_gtk_entry(entry)
+        self.entry.set_inline_spell_checking(True)
+
+    @classmethod
+    def is_available(cls):
+        cls._load_module()
+        return bool(SpellChecker.module)
+
+    def set_enabled(self, enabled):
+        self.entry.set_inline_spell_checking(enabled)
+
+    def destroy(self):
+        self.__dict__.clear()
 
 
 class TextSearchBar:
 
-    def __init__(self, textview, search_bar, entry, controller_widget=None, focus_widget=None):
+    def __init__(self, textview, search_bar, controller_widget=None, focus_widget=None,
+                 placeholder_text=None):
 
         self.textview = textview
         self.search_bar = search_bar
-        self.entry = entry
-        self.focus_widget = focus_widget or textview
+        self.focus_widget = focus_widget
+
+        container = Gtk.Box(spacing=6, visible=True)
+        self.entry = Gtk.SearchEntry(
+            max_width_chars=75, placeholder_text=placeholder_text, width_chars=24, visible=True
+        )
+        self.previous_button = Gtk.Button(tooltip_text=_("Find Previous Match"), visible=True)
+        self.next_button = Gtk.Button(tooltip_text=_("Find Next Match"), visible=True)
+
+        if GTK_API_VERSION >= 4:
+            self.previous_button.set_icon_name("go-up-symbolic")                   # pylint: disable=no-member
+            self.next_button.set_icon_name("go-down-symbolic")                     # pylint: disable=no-member
+
+            container.append(self.entry)                                           # pylint: disable=no-member
+            container.append(self.previous_button)                                 # pylint: disable=no-member
+            container.append(self.next_button)                                     # pylint: disable=no-member
+            self.search_bar.set_child(container)                                   # pylint: disable=no-member
+        else:
+            self.previous_button.set_image(Gtk.Image(icon_name="go-up-symbolic"))  # pylint: disable=no-member
+            self.next_button.set_image(Gtk.Image(icon_name="go-down-symbolic"))    # pylint: disable=no-member
+
+            container.add(self.entry)                                              # pylint: disable=no-member
+            container.add(self.previous_button)                                    # pylint: disable=no-member
+            container.add(self.next_button)                                        # pylint: disable=no-member
+            self.search_bar.add(container)                                         # pylint: disable=no-member
+
+        if not controller_widget:
+            controller_widget = textview
+
+        for button in (self.previous_button, self.next_button):
+            add_css_class(button, "flat")
 
         self.search_bar.connect_entry(self.entry)
 
         self.entry.connect("activate", self.on_search_next_match)
         self.entry.connect("search-changed", self.on_search_changed)
+        self.entry.connect("stop-search", self.on_hide_search_accelerator)
 
         self.entry.connect("previous-match", self.on_search_previous_match)
         self.entry.connect("next-match", self.on_search_next_match)
+        self.previous_button.connect("clicked", self.on_search_previous_match)
+        self.next_button.connect("clicked", self.on_search_next_match)
 
-        if not controller_widget:
-            controller_widget = textview
+        Accelerator("Up", self.entry, self.on_search_previous_match)
+        Accelerator("Down", self.entry, self.on_search_next_match)
+        Accelerator("<Primary>f", controller_widget, self.on_show_search_accelerator)
+        Accelerator("Escape", controller_widget, self.on_hide_search_accelerator)
 
-        setup_accelerator("<Primary>f", controller_widget, self.on_show_search_accelerator)
+        for accelerator in ("<Primary>g", "F3"):
+            Accelerator(accelerator, controller_widget, self.on_search_next_match)
 
-        for widget in (controller_widget, entry):
-            setup_accelerator("Escape", widget, self.on_hide_search_accelerator)
+        for accelerator in ("<Shift><Primary>g", "<Shift>F3"):
+            Accelerator(accelerator, controller_widget, self.on_search_previous_match)
+
+    def destroy(self):
+        self.__dict__.clear()
 
     def on_search_match(self, search_type, restarted=False):
 
-        buffer = self.textview.get_buffer()
+        if not self.search_bar.get_search_mode():
+            return
+
+        text_buffer = self.textview.get_buffer()
         query = self.entry.get_text()
 
         self.textview.emit("select-all", False)
 
         if search_type == "typing":
-            start, end = buffer.get_bounds()
+            start, end = text_buffer.get_bounds()
             iterator = start
         else:
-            current = buffer.get_mark("insert")
-            iterator = buffer.get_iter_at_mark(current)
+            current = text_buffer.get_mark("insert")
+            iterator = text_buffer.get_iter_at_mark(current)
 
         if search_type == "previous":
             match = iterator.backward_search(
@@ -546,81 +596,69 @@ class TextSearchBar:
             match_start, match_end = match
 
             if search_type == "previous":
-                buffer.place_cursor(match_start)
-                buffer.select_range(match_start, match_end)
+                text_buffer.place_cursor(match_start)
+                text_buffer.select_range(match_start, match_end)
             else:
-                buffer.place_cursor(match_end)
-                buffer.select_range(match_end, match_start)
+                text_buffer.place_cursor(match_end)
+                text_buffer.select_range(match_end, match_start)
 
             self.textview.scroll_to_iter(match_start, 0, False, 0.5, 0.5)
 
         elif not restarted and search_type != "typing":
-            start, end = buffer.get_bounds()
+            start, end = text_buffer.get_bounds()
 
             if search_type == "previous":
-                buffer.place_cursor(end)
+                text_buffer.place_cursor(end)
             elif search_type == "next":
-                buffer.place_cursor(start)
+                text_buffer.place_cursor(start)
 
             self.on_search_match(search_type, restarted=True)
 
-    def on_search_changed(self, *args):
+    def on_search_changed(self, *_args):
         self.on_search_match(search_type="typing")
 
-    def on_search_previous_match(self, *args):
+    def on_search_previous_match(self, *_args):
         self.on_search_match(search_type="previous")
+        return True
 
-    def on_search_next_match(self, *args):
+    def on_search_next_match(self, *_args):
         self.on_search_match(search_type="next")
-
-    def on_hide_search_accelerator(self, *args):
-        """ Escape: hide search bar """
-
-        self.hide_search_bar()
         return True
 
-    def on_show_search_accelerator(self, *args):
-        """ Ctrl+F: show search bar """
+    def on_hide_search_accelerator(self, *_args):
+        """Escape - hide search bar."""
 
-        self.show_search_bar()
+        self.set_visible(False)
         return True
 
-    def show_search_bar(self):
-        self.search_bar.set_search_mode(True)
-        self.entry.grab_focus()
+    def on_show_search_accelerator(self, *_args):
+        """Ctrl+F - show search bar."""
 
-    def hide_search_bar(self):
-        self.search_bar.set_search_mode(False)
-        self.focus_widget.grab_focus()
+        self.set_visible(True)
+        return True
 
+    def set_visible(self, visible):
 
-class CompletionEntry:
+        self.search_bar.set_search_mode(visible)
 
-    def __init__(self, entry, model):
+        if visible:
+            text_buffer = self.textview.get_buffer()
+            selection_bounds = text_buffer.get_selection_bounds()
 
-        self.entry = entry
+            if selection_bounds:
+                selection_start, selection_end = selection_bounds
+                selection_content = text_buffer.get_text(
+                    selection_start, selection_end, include_hidden_chars=True)
 
-        completion = Gtk.EntryCompletion()
-        completion.set_inline_completion(True)
-        completion.set_inline_selection(True)
-        completion.set_popup_single_match(False)
-        completion.set_model(model)
-        completion.set_text_column(0)
-        completion.set_match_func(self.entry_completion_find_match)
+                if self.entry.get_text().lower() != selection_content.lower():
+                    self.entry.set_text(selection_content)
 
-        entry.set_completion(completion)
+            self.entry.grab_focus()
+            self.entry.set_position(-1)
+            return
 
-    def entry_completion_find_match(self, completion, entry_text, iterator):
+        if self.focus_widget is not None and self.focus_widget.get_sensitive():
+            self.focus_widget.grab_focus()
+            return
 
-        if not entry_text:
-            return False
-
-        item_text = completion.get_model().get_value(iterator, 0)
-
-        if not item_text:
-            return False
-
-        if item_text.lower().startswith(entry_text.lower()):
-            return True
-
-        return False
+        self.textview.grab_focus()

@@ -1,149 +1,154 @@
-# Download Nicotine+
+# Downloads
+
+Download the current stable version of Nicotine+ for your operating system.
+For the release notes, see [NEWS.md](../NEWS.md).
+
+If you want to download the latest unstable build and help test Nicotine+,
+see [TESTING.md](TESTING.md).
+
 
 ## GNU/Linux, *BSD, Solaris
 
-If you have no need to modify the Nicotine+ source, you are strongly recommended to use packages for your distribution/operating system. This will save you time.
+### Operating System Packages
 
-### Ubuntu/Debian (Stable)
+If you are using any of the operating systems listed, you can install Nicotine+
+using the package manager.
 
-To use [stable packages](https://launchpad.net/~nicotine-team/+archive/ubuntu/stable) on Ubuntu and Debian, add the stable Nicotine+ apt repository (PPA) by running the following:
+| Operating System                                                                         | Package Name               |
+|------------------------------------------------------------------------------------------|----------------------------|
+| [Alpine Linux Edge](https://pkgs.alpinelinux.org/packages?name=nicotine-plus)            | `nicotine-plus`            |
+| [Arch Linux](https://archlinux.org/packages/extra/any/nicotine+/)                        | `nicotine+`                |
+| [Chimera Linux](https://pkgs.chimera-linux.org/packages?name=nicotine-plus)              | `nicotine-plus`            |
+| [Debian Unstable/Testing](https://tracker.debian.org/pkg/nicotine)                       | `nicotine`                 |
+| [Fedora](https://packages.fedoraproject.org/pkgs/nicotine+/nicotine+/)                   | `nicotine+`                |
+| [FreeBSD Ports](https://www.freshports.org/net-p2p/py-nicotine-plus)                     | `net-p2p/py-nicotine-plus` |
+| [Gentoo](https://packages.gentoo.org/packages/net-p2p/nicotine+)                         | `net-p2p/nicotine+`        |
+| [Mageia](https://madb.mageialinux-online.org/show?distribution=cauldron&rpm=nicotine%2B) | `nicotine+`                |
+| [Manjaro](https://manjaristas.org/branch_compare?q=nicotine%2B)                          | `nicotine+`                |
+| [NixOS](https://search.nixos.org/packages?show=nicotine-plus)                            | `nicotine-plus`            |
+| [OpenBSD Ports](https://openports.pl/path/net/nicotine-plus)                             | `net/nicotine-plus`        |
+| [OpenMandriva](https://github.com/OpenMandrivaAssociation/nicotineplus)                  | `nicotine+`                |
+| [Parabola](https://www.parabola.nu/packages/extra/x86_64/nicotine+/)                     | `nicotine+`                |
+| [PLD Linux](https://git.pld-linux.org/?p=packages/nicotine.git;a=tree)                   | `nicotine`                 |
+| [Solus](https://github.com/getsolus/packages/tree/main/packages/n/nicotine-plus)         | `nicotine-plus`            |
+| [T2 SDE](https://t2sde.org/packages/nicotine-plus)                                       | `nicotine-plus`            |
+| [Void Linux](https://github.com/void-linux/void-packages/tree/master/srcpkgs/nicotine+)  | `nicotine+`                |
+
+### Universal Packages (GNU/Linux)
+
+Packages listed below can be installed on different GNU/Linux distributions.
+
+| Format                                                                           | Package Name                 |
+|----------------------------------------------------------------------------------|------------------------------|
+| [Flatpak](https://flathub.org/apps/details/org.nicotine_plus.Nicotine)           | `org.nicotine_plus.Nicotine` |
+| [Snap](https://snapcraft.io/nicotine-plus)                                       | `nicotine-plus`              |
+
+### PPA (Ubuntu/Debian)
+
+To use [stable packages](https://launchpad.net/~nicotine-team/+archive/ubuntu/stable)
+on Ubuntu and Debian, add the *nicotine-team/stable* PPA repository.
+
+On Ubuntu and distributions based on it (e.g. Linux Mint, elementary OS,
+Pop!_OS, various Ubuntu flavors), run the following:
 
 ```sh
-sudo apt install software-properties-common
 sudo add-apt-repository ppa:nicotine-team/stable
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 6CEB6050A30E5769
-sudo apt update
-sudo apt install nicotine
+sudo apt update; sudo apt install nicotine
 ```
 
-If you prefer to install a .deb package directly, you can download one [here](http://ppa.launchpad.net/nicotine-team/stable/ubuntu/pool/main/n/nicotine/). Unlike the repository installation method, Nicotine+ will not update automatically; you need to download a .deb package each time a new release is available.
-
-### Ubuntu/Debian (Unstable)
-
-The project builds [daily unstable snapshots](https://code.launchpad.net/~nicotine-team/+recipe/nicotine+-daily) in a separate [unstable PPA](https://code.launchpad.net/~nicotine-team/+archive/ubuntu/unstable). To use it, run the following:
+On Debian and distributions based on it (e.g. Devuan, Peppermint OS), run the
+following:
 
 ```sh
-sudo apt install software-properties-common
-sudo add-apt-repository ppa:nicotine-team/unstable
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 6CEB6050A30E5769
-sudo apt update
-sudo apt install nicotine
+sudo apt update; sudo apt install python3-launchpadlib software-properties-common
+sudo add-apt-repository 'deb https://ppa.launchpadcontent.net/nicotine-team/stable/ubuntu jammy main'
+sudo apt update; sudo apt install nicotine
 ```
 
-If you prefer to install a .deb package directly, you can download one [here](http://ppa.launchpad.net/nicotine-team/unstable/ubuntu/pool/main/n/nicotine/). Unlike the repository installation method, Nicotine+ will not update automatically; you need to download a .deb package each time a new release is available.
+If you prefer to install a .deb package manually, you can
+[download one here](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/debian-package.zip).
 
-### Arch Linux/Manjaro/Parabola (Stable)
+> **NOTE**: When installing the .deb package manually, Nicotine+ will not
+> update automatically. You need to download and install the latest version
+> from the link above after every update.
 
-Nicotine+ is available in the community repository of Arch Linux, Manjaro and Parabola. To install, run the following:
+### PyPi (GNU/Linux, *BSD, Solaris)
 
-```sh
-sudo pacman -S nicotine+
-```
+If no package is available for your operating system, you can install Nicotine+
+from [PyPi](https://pypi.org/project/nicotine-plus/).
 
-### Void Linux (Stable)
-
-To install Nicotine+ on Void Linux, run the following:
-
-```sh
-sudo xbps-install -S nicotine+
-```
-
-### Fedora (Stable)
-
-To install Nicotine+ on Fedora, run the following:
-
-```sh
-sudo dnf install nicotine+
-```
-
-### Other Distributions
-
-If Nicotine+ has not been packaged for your distribution/operating system yet, there are other recommended ways of installing Nicotine+.
-
-#### pip (Stable)
-
-Nicotine+ can be installed using [pip](https://pip.pypa.io/en/stable/). Ensure the [runtime dependencies](doc/DEPENDENCIES.md) are installed, and run the following:
+Ensure the [runtime dependencies](DEPENDENCIES.md) are installed, and run the
+following:
 
 ```sh
 pip3 install nicotine-plus
 ```
 
-Keep in mind that Nicotine+ will not update automatically. When a new release is available, run the following:
+Keep in mind that Nicotine+ will not update automatically. When a new release
+is available, run the following:
 
 ```sh
-pip3 install nicotine-plus --upgrade
+pip3 install --upgrade nicotine-plus
 ```
 
-#### Flatpak (Stable)
-
-If your distribution supports Flatpak, you can install Nicotine+ from Flathub.
-
-- [Download Nicotine+ on Flathub](https://flathub.org/apps/details/org.nicotine_plus.Nicotine)
-
-#### Flatpak (Unstable)
-
-Unstable Flatpak packages are generated after every commit to the master branch, and should only be used for testing.
-
-- [Download Package](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/flatpak-package.zip)
 
 ## Windows
 
-### Stable
+### Official Release
 
-Stable Windows installers for Nicotine+ are available for download. Installing Nicotine+ requires administrator privileges.
+Stable installers are available for download.
 
-- [64-bit Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip)  [[SHA256](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip.sha256)]
-- [32-bit Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-i686-installer.zip)  [[SHA256](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-i686-installer.zip.sha256)]
+ - [Download Windows Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip)
+    — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip.sha256)  
+   for Windows 10 or later
 
-Portable packages are also available. They can be run from your home directory, and do not require installation or administrator privileges.
+Standalone executables are also available. They can be run from any folder and
+do not require installation.
 
-- [64-bit Portable Package](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip)  [[SHA256](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip.sha256)]
-- [32-bit Portable Package](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-i686-package.zip)  [[SHA256](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-i686-package.zip.sha256)]
+ - [Download Windows Standalone Package](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip)
+    — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip.sha256)  
+   for Windows 10 or later
 
-### Unstable
+> **IMPORTANT**: The installer format has changed since Nicotine+ 3.2.0. If you
+> are upgrading from Nicotine+ 3.1.1 or earlier, please uninstall Nicotine+
+> first (this will not remove your existing settings).
 
-Unstable Windows packages are generated after every commit to the master branch, and should only be used for testing.
+> **NOTE**: Configuration files are always stored in  
+> *C:\Users\\<USERNAME\>\AppData\Roaming\nicotine*
 
-- [64-bit Installer](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/windows-x86_64-installer.zip)
-- [32-bit Installer](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/windows-i686-installer.zip)
+### Package Managers
 
-Portable packages are also available. They can be run from your home directory, and do not require installation or administrator privileges.
+If you are using any of the package managers listed, you can install Nicotine+
+using them.
 
-- [64-bit Portable Package](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/windows-x86_64-package.zip)
-- [32-bit Portable Package](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/windows-i686-package.zip)
+| Package Manager                                                                                    | Package Name           |
+|----------------------------------------------------------------------------------------------------|------------------------|
+| [Chocolatey](https://community.chocolatey.org/packages/nicotine-plus)                              | `nicotine-plus`        |
+| [Scoop](https://github.com/ScoopInstaller/Extras/blob/master/bucket/nicotine-plus.json)            | `extras/nicotine-plus` |
+| [Winget](https://github.com/microsoft/winget-pkgs/tree/master/manifests/n/Nicotine%2B/Nicotine%2B) | `nicotine+.nicotine+`  |
 
-### Chocolatey (Stable)
-
-Nicotine+ can be installed using [Chocolatey](https://community.chocolatey.org/packages/nicotine-plus). Run the following:
-
-```sh
-choco install nicotine-plus
-```
 
 ## macOS
 
-### Stable (Catalina/10.15 and newer)
+### Official Release
 
-A stable macOS installer for Nicotine+ is available on macOS version 10.15 (Catalina) and newer.
+> **IMPORTANT**: You must follow [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac)
+> the first time you start Nicotine+.
 
-- [Download Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-installer.zip)  [[SHA256](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-installer.zip.sha256)]
+ - [Download macOS Intel Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-x86_64-installer.zip)
+    — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-x86_64-installer.zip.sha256)  
+   for macOS 13 Ventura or later
 
-### Stable (Mojave/10.14)
+ - [Download macOS Apple Silicon Installer](https://github.com/nicotine-plus/nicotine-plus/releases/download/3.3.6/macos-arm64-installer.zip)
+    — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/download/3.3.6/macos-arm64-installer.zip.sha256)  
+   for macOS 14 Sonoma or later
 
-On macOS version 10.14 (Mojave), the recommended approach is to install Nicotine+ using [Homebrew](https://brew.sh).
+### Package Managers
 
-Once Homebrew is set up, run the following:
+If you are using any of the package managers listed, you can install Nicotine+
+using them.
 
-```sh
-brew install nicotine-plus
-```
-
-### Unstable (Catalina/10.15 or newer)
-
-Unstable macOS installers are generated after every commit to the master branch, and should only be used for testing.
-
-- [Download Installer](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/macos-installer.zip)
-
-## Building from Git (Unstable)
-
-For more experienced users and developers who want to test the latest and greatest changes in Nicotine+, building from Git is described in [RUNFROMGIT.md](doc/RUNFROMGIT.md). Also read the next section about getting involved.
+| Package Manager                                                     | Package Name    |
+|---------------------------------------------------------------------|-----------------|
+| [Homebrew Formulae](https://formulae.brew.sh/formula/nicotine-plus) | `nicotine-plus` |
+| [MacPorts](https://ports.macports.org/port/nicotine-plus/)          | `nicotine-plus` |

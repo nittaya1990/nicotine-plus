@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2021 Nicotine+ Team
+# COPYRIGHT (C) 2021-2024 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -16,123 +16,165 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from pynicotine import slskmessages
+from pynicotine.config import config
+from pynicotine.core import core
+from pynicotine.events import events
+from pynicotine.slskmessages import AddThingIHate
+from pynicotine.slskmessages import AddThingILike
+from pynicotine.slskmessages import GlobalRecommendations
+from pynicotine.slskmessages import ItemRecommendations
+from pynicotine.slskmessages import ItemSimilarUsers
+from pynicotine.slskmessages import Recommendations
+from pynicotine.slskmessages import RemoveThingILike
+from pynicotine.slskmessages import RemoveThingIHate
+from pynicotine.slskmessages import SimilarUsers
+
+
+class SimilarUser:
+    __slots__ = ("username", "rating")
+
+    def __init__(self, username, rating=None):
+        self.username = username
+        self.rating = rating
 
 
 class Interests:
+    __slots__ = ("similar_users",)
 
-    def __init__(self, core, config, queue, ui_callback=None):
+    def __init__(self):
 
-        self.core = core
-        self.config = config
-        self.queue = queue
-        self.ui_callback = None
+        self.similar_users = {}
 
-        if hasattr(ui_callback, "interests"):
-            self.ui_callback = ui_callback.interests
+        for event_name, callback in (
+            ("item-similar-users", self._item_similar_users),
+            ("quit", self._quit),
+            ("server-login", self._server_login),
+            ("similar-users", self._similar_users)
+        ):
+            events.connect(event_name, callback)
 
-    def server_login(self):
+    def _quit(self):
+        self.similar_users.clear()
 
-        for thing in self.config.sections["interests"]["likes"]:
-            if thing and isinstance(thing, str):
-                self.queue.append(slskmessages.AddThingILike(thing))
+    def _server_login(self, msg):
 
-        for thing in self.config.sections["interests"]["dislikes"]:
-            if thing and isinstance(thing, str):
-                self.queue.append(slskmessages.AddThingIHate(thing))
+        if not msg.success:
+            return
 
-        if self.ui_callback:
-            self.ui_callback.server_login()
+        for item in config.sections["interests"]["likes"]:
+            if not isinstance(item, str):
+                continue
+
+            item = item.strip().lower()
+
+            if item:
+                core.send_message_to_server(AddThingILike(item))
+
+        for item in config.sections["interests"]["dislikes"]:
+            if not isinstance(item, str):
+                continue
+
+            item = item.strip().lower()
+
+            if item:
+                core.send_message_to_server(AddThingIHate(item))
 
     def add_thing_i_like(self, item):
 
-        if not item and not isinstance(item, str):
-            return False
+        item = item.strip().lower()
 
-        if item in self.config.sections["interests"]["likes"]:
-            return False
+        if not item:
+            return
 
-        self.config.sections["interests"]["likes"].append(item)
-        self.config.write_configuration()
+        if item in config.sections["interests"]["likes"]:
+            return
 
-        self.queue.append(slskmessages.AddThingILike(item))
-        return True
+        config.sections["interests"]["likes"].append(item)
+        config.write_configuration()
+        core.send_message_to_server(AddThingILike(item))
+
+        events.emit("add-interest", item)
 
     def add_thing_i_hate(self, item):
 
-        if not item and not isinstance(item, str):
-            return False
+        item = item.strip().lower()
 
-        if item in self.config.sections["interests"]["dislikes"]:
-            return False
+        if not item:
+            return
 
-        self.config.sections["interests"]["dislikes"].append(item)
-        self.config.write_configuration()
+        if item in config.sections["interests"]["dislikes"]:
+            return
 
-        self.queue.append(slskmessages.AddThingIHate(item))
-        return True
+        config.sections["interests"]["dislikes"].append(item)
+        config.write_configuration()
+        core.send_message_to_server(AddThingIHate(item))
+
+        events.emit("add-dislike", item)
 
     def remove_thing_i_like(self, item):
 
         if not item and not isinstance(item, str):
-            return False
+            return
 
-        if item not in self.config.sections["interests"]["likes"]:
-            return False
+        if item not in config.sections["interests"]["likes"]:
+            return
 
-        self.config.sections["interests"]["likes"].remove(item)
-        self.config.write_configuration()
-        self.queue.append(slskmessages.RemoveThingILike(item))
-        return True
+        config.sections["interests"]["likes"].remove(item)
+        config.write_configuration()
+        core.send_message_to_server(RemoveThingILike(item))
+
+        events.emit("remove-interest", item)
 
     def remove_thing_i_hate(self, item):
 
         if not item and not isinstance(item, str):
-            return False
+            return
 
-        if item not in self.config.sections["interests"]["dislikes"]:
-            return False
+        if item not in config.sections["interests"]["dislikes"]:
+            return
 
-        self.config.sections["interests"]["dislikes"].remove(item)
-        self.config.write_configuration()
-        self.queue.append(slskmessages.RemoveThingIHate(item))
-        return True
+        config.sections["interests"]["dislikes"].remove(item)
+        config.write_configuration()
+        core.send_message_to_server(RemoveThingIHate(item))
+
+        events.emit("remove-dislike", item)
 
     def request_global_recommendations(self):
-        self.queue.append(slskmessages.GlobalRecommendations())
+        core.send_message_to_server(GlobalRecommendations())
 
     def request_item_recommendations(self, item):
-        self.queue.append(slskmessages.ItemRecommendations(item))
+        core.send_message_to_server(ItemRecommendations(item))
 
     def request_item_similar_users(self, item):
-        self.queue.append(slskmessages.ItemSimilarUsers(item))
+        core.send_message_to_server(ItemSimilarUsers(item))
 
     def request_recommendations(self):
-        self.queue.append(slskmessages.Recommendations())
+        core.send_message_to_server(Recommendations())
 
     def request_similar_users(self):
-        self.queue.append(slskmessages.SimilarUsers())
+        core.send_message_to_server(SimilarUsers())
 
-    def global_recommendations(self, msg):
-        if self.ui_callback:
-            self.ui_callback.global_recommendations(msg)
+    def _similar_users(self, msg, has_ratings=True):
+        """Server code 110."""
 
-    def item_recommendations(self, msg):
-        if self.ui_callback:
-            self.ui_callback.item_recommendations(msg)
+        new_users = set(msg.users)
 
-    def recommendations(self, msg):
-        if self.ui_callback:
-            self.ui_callback.recommendations(msg)
+        # Unwatch and remove old users
+        for username in self.similar_users:
+            if username not in new_users:
+                core.users.unwatch_user(username, context="interests")
 
-    def similar_users(self, msg):
-        if self.ui_callback:
-            self.ui_callback.similar_users(msg)
+        self.similar_users.clear()
 
-    def get_user_status(self, msg):
-        if self.ui_callback:
-            self.ui_callback.get_user_status(msg)
+        # Add new users
+        for username in msg.users:
+            rating = msg.users[username] if has_ratings else None
+            self.similar_users[username] = SimilarUser(username, rating)
 
-    def get_user_stats(self, msg):
-        if self.ui_callback:
-            self.ui_callback.get_user_stats(msg)
+            # Request user status, speed and number of shared files
+            core.users.watch_user(username, context="interests")
+
+    def _item_similar_users(self, msg):
+        """Server code 112."""
+
+        self._similar_users(msg, has_ratings=False)

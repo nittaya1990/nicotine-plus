@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -20,175 +20,265 @@ import re
 import time
 
 from gi.repository import Gdk
-from gi.repository import GLib
 from gi.repository import Gtk
 
-from pynicotine.config import config
-from pynicotine.gtkgui.utils import copy_all_text
-from pynicotine.gtkgui.utils import copy_text
+from pynicotine.core import core
+from pynicotine.gtkgui.application import GTK_API_VERSION
+from pynicotine.gtkgui.widgets import clipboard
+from pynicotine.gtkgui.widgets.accelerator import Accelerator
 from pynicotine.gtkgui.widgets.theme import update_tag_visuals
+from pynicotine.gtkgui.widgets.theme import USER_STATUS_COLORS
+from pynicotine.slskmessages import UserStatus
+from pynicotine.utils import find_whole_word
 from pynicotine.utils import open_uri
-
-
-""" Textview """
 
 
 class TextView:
 
-    def __init__(self, textview, font=None):
-
-        self.textview = textview
-        self.textbuffer = textview.get_buffer()
-        self.scrollable = textview.get_parent()
-        self.font = font
-        self.url_regex = re.compile("(\\w+\\://[^\\s]+)|(www\\.\\w+\\.[^\\s]+)|(mailto\\:[^\\s]+)")
-
-        self.tag_urls = []
-        self.pressed_x = 0
-        self.pressed_y = 0
-
-        if Gtk.get_major_version() == 4:
-            self.gesture_click = Gtk.GestureClick()
-            self.gesture_click_secondary = Gtk.GestureClick()
-            self.scrollable.add_controller(self.gesture_click)
-            self.scrollable.add_controller(self.gesture_click_secondary)
-
+    try:
+        if GTK_API_VERSION >= 4:
+            DEFAULT_CURSOR = Gdk.Cursor(name="default")
+            POINTER_CURSOR = Gdk.Cursor(name="pointer")
+            TEXT_CURSOR = Gdk.Cursor(name="text")
         else:
-            self.gesture_click = Gtk.GestureMultiPress.new(self.scrollable)
-            self.gesture_click_secondary = Gtk.GestureMultiPress.new(self.scrollable)
+            DEFAULT_CURSOR = Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "default")
+            POINTER_CURSOR = Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "pointer")
+            TEXT_CURSOR = Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "text")
 
-        self.gesture_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        self.gesture_click.connect("pressed", self._callback_pressed)
-        self.gesture_click.connect("released", self._callback_released)
+    except TypeError:
+        # Broken cursor theme, but what can we do...
+        DEFAULT_CURSOR = POINTER_CURSOR = TEXT_CURSOR = None
+
+    MAX_NUM_LINES = 50000
+    URL_REGEX = re.compile("(\\w+\\://[^\\s]+)|(www\\.\\w+\\.[^\\s]+)|(mailto\\:[^\\s]+)")
+
+    def __init__(self, parent, auto_scroll=False, parse_urls=True, editable=True,
+                 horizontal_margin=12, vertical_margin=8, pixels_above_lines=1, pixels_below_lines=1):
+
+        self.widget = Gtk.TextView(
+            accepts_tab=False, editable=editable,
+            left_margin=horizontal_margin, right_margin=horizontal_margin,
+            top_margin=vertical_margin, bottom_margin=vertical_margin,
+            pixels_above_lines=pixels_above_lines, pixels_below_lines=pixels_below_lines,
+            wrap_mode=Gtk.WrapMode.WORD_CHAR, visible=True
+        )
+
+        if GTK_API_VERSION >= 4:
+            parent.set_child(self.widget)  # pylint: disable=no-member
+        else:
+            parent.add(self.widget)        # pylint: disable=no-member
+
+        self.textbuffer = self.widget.get_buffer()
+        self.end_iter = self.textbuffer.get_end_iter()
+        self.scrollable = self.widget.get_ancestor(Gtk.ScrolledWindow)
+        scrollable_container = self.scrollable.get_ancestor(Gtk.Box)
+
+        self.adjustment = self.scrollable.get_vadjustment()
+        self.auto_scroll = auto_scroll
+        self.adjustment_bottom = self.adjustment_value = 0
+        self.notify_upper_handler = self.adjustment.connect("notify::upper", self.on_adjustment_upper_changed)
+        self.notify_value_handler = self.adjustment.connect("notify::value", self.on_adjustment_value_changed)
+
+        self.pressed_x = self.pressed_y = 0
+        self.type_tags = {}
+        self.parse_urls = parse_urls
+
+        if GTK_API_VERSION >= 4:
+            self.textbuffer.set_enable_undo(editable)
+
+            self.gesture_click_primary = Gtk.GestureClick()
+            scrollable_container.add_controller(self.gesture_click_primary)
+
+            self.gesture_click_secondary = Gtk.GestureClick()
+            scrollable_container.add_controller(self.gesture_click_secondary)
+
+            self.cursor_window = self.widget
+
+            self.motion_controller = Gtk.EventControllerMotion()
+            self.motion_controller.connect("motion", self.on_move_cursor)
+            self.widget.add_controller(self.motion_controller)  # pylint: disable=no-member
+        else:
+            self.gesture_click_primary = Gtk.GestureMultiPress(widget=scrollable_container)
+            self.gesture_click_secondary = Gtk.GestureMultiPress(widget=scrollable_container)
+
+            self.cursor_window = None
+
+            self.widget.connect("motion-notify-event", self.on_move_cursor_event)
+
+        self.gesture_click_primary.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        self.gesture_click_primary.connect("released", self.on_released_primary)
 
         self.gesture_click_secondary.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        self.gesture_click_secondary.connect("pressed", self._callback_pressed)
         self.gesture_click_secondary.set_button(Gdk.BUTTON_SECONDARY)
+        self.gesture_click_secondary.connect("pressed", self.on_pressed_secondary)
 
-        self.textview.connect("realize", self.on_realize)
+    def destroy(self):
+
+        # Prevent updates while destroying widget
+        self.adjustment.disconnect(self.notify_upper_handler)
+        self.adjustment.disconnect(self.notify_value_handler)
+
+        self.__dict__.clear()
 
     def scroll_bottom(self):
+        self.adjustment_value = (self.adjustment.get_upper() - self.adjustment.get_page_size())
+        self.adjustment.set_value(self.adjustment_value)
 
-        if not self.textview.get_realized():
-            # Avoid GTK warnings
-            return False
+    def _insert_text(self, text, tag=None):
 
-        adjustment = self.scrollable.get_vadjustment()
-        adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
-        return False
+        if not text:
+            return
 
-    def append_line(self, line, tag=None, timestamp=None, showstamp=True, timestamp_format="%H:%M:%S",
-                    username=None, usertag=None, scroll=True, find_urls=True):
+        if tag is not None:
+            start_offset = self.end_iter.get_offset()
 
-        def _append(buffer, text, tag):
+        self.textbuffer.insert(self.end_iter, text)
 
-            iterator = buffer.get_end_iter()
+        if tag is not None:
+            start_iter = self.textbuffer.get_iter_at_offset(start_offset)
+            self.textbuffer.apply_tag(tag, start_iter, self.end_iter)
 
-            if tag is not None:
-                start_offset = iterator.get_offset()
+    def _remove_old_lines(self, num_lines):
 
-            buffer.insert(iterator, text)
+        if num_lines < self.MAX_NUM_LINES:
+            return
 
-            if tag is not None:
-                start = buffer.get_iter_at_offset(start_offset)
-                buffer.apply_tag(tag, start, iterator)
+        # Optimization: remove lines in batches
+        start_iter = self.textbuffer.get_start_iter()
+        end_line = (num_lines - (self.MAX_NUM_LINES - 1000))
+        end_iter = self.get_iter_at_line(end_line)
 
-        def _usertag(buffer, section):
+        self.textbuffer.delete(start_iter, end_iter)
+        self.end_iter = self.textbuffer.get_end_iter()
 
-            # Tag usernames with popup menu creating tag, and away/online/offline colors
-            if (username is not None and usertag is not None and config.sections["ui"]["usernamehotspots"]
-                    and username in section):
-                start = section.find(username)
-                end = start + len(username)
+    def append_line(self, line, message_type=None, timestamp=None, timestamp_format=None,
+                    username=None, usertag=None):
 
-                _append(buffer, section[:start], tag)
-                _append(buffer, username, usertag)
-                _append(buffer, section[end:], tag)
-                return
-
-            _append(buffer, section, tag)
-
+        tag = self.type_tags.get(message_type)
+        num_lines = self.textbuffer.get_line_count()
         line = str(line).strip("\n")
-        buffer = self.textbuffer
-        linenr = buffer.get_line_count()
 
-        if showstamp and timestamp_format and config.sections["logging"]["timestamps"]:
-            if timestamp:
-                final_timestamp = time.strftime(timestamp_format, time.localtime(timestamp)) + " "
-            else:
-                final_timestamp = time.strftime(timestamp_format) + " "
+        if timestamp_format:
+            line = time.strftime(timestamp_format, time.localtime(timestamp)) + " " + line
 
-            line = final_timestamp + line
+        if self.textbuffer.get_char_count() > 0:
+            # No tag applied on line breaks to prevent visual glitch where text on the
+            # next line has the wrong color
+            self._insert_text("\n")
 
-        if buffer.get_char_count() > 0:
-            line = "\n" + line
+        # Tag usernames with popup menu creating tag, and away/online/offline colors
+        if username and username in line:
+            start = line.find(username)
 
-        if find_urls and ("://" in line or "www." in line or "mailto:" in line):
+            self._insert_text(line[:start], tag)
+            self._insert_text(username, usertag)
+
+            line = line[start + len(username):]
+
+        # Highlight urls, if found and tag them
+        if self.parse_urls and ("://" in line or "www." in line or "mailto:" in line):
             # Match first url
-            match = self.url_regex.search(line)
+            match = self.URL_REGEX.search(line)
 
-            # Highlight urls, if found and tag them
             while match:
-                _usertag(buffer, line[:match.start()])
+                self._insert_text(line[:match.start()], tag)
 
                 url = match.group()
                 urltag = self.create_tag("urlcolor", url=url)
-                self.tag_urls.append(urltag)
-                _append(buffer, url, urltag)
+                self._insert_text(url, urltag)
 
                 # Match remaining url
                 line = line[match.end():]
-                match = self.url_regex.search(line)
+                match = self.URL_REGEX.search(line)
 
-        if line:
-            _usertag(buffer, line)
+        self._insert_text(line, tag)
+        self._remove_old_lines(num_lines)
 
-        if scroll:
-            va = self.scrollable.get_vadjustment()
+    def get_iter_at_line(self, line_number):
 
-            # Scroll to bottom if we had scrolled up less than ~2 lines previously
-            if (va.get_value() + va.get_page_size()) >= va.get_upper() - 40:
-                GLib.idle_add(self.scroll_bottom, priority=GLib.PRIORITY_LOW)
+        iterator = self.textbuffer.get_iter_at_line(line_number)
 
-        return linenr
+        if GTK_API_VERSION >= 4:
+            _position_found, iterator = iterator
+
+        return iterator
 
     def get_has_selection(self):
         return self.textbuffer.get_has_selection()
 
-    def get_tags_for_selected_pos(self):
+    def get_text(self):
 
-        buf_x, buf_y = self.textview.window_to_buffer_coords(Gtk.TextWindowType.WIDGET,
-                                                             self.pressed_x, self.pressed_y)
-        over_text, iterator = self.textview.get_iter_at_location(buf_x, buf_y)
+        start_iter = self.textbuffer.get_start_iter()
+        self.end_iter = self.textbuffer.get_end_iter()
+
+        return self.textbuffer.get_text(start_iter, self.end_iter, include_hidden_chars=True)
+
+    def get_tags_for_pos(self, pos_x, pos_y):
+
+        buf_x, buf_y = self.widget.window_to_buffer_coords(Gtk.TextWindowType.WIDGET, pos_x, pos_y)
+        over_text, iterator, _trailing = self.widget.get_iter_at_position(buf_x, buf_y)
+
+        if not over_text:
+            # Iterators are returned for whitespace after the last character, avoid accidental URL clicks
+            return []
+
         return iterator.get_tags()
 
-    def get_url_for_selected_pos(self):
+    def get_url_for_current_pos(self):
 
-        for tag in self.get_tags_for_selected_pos():
+        for tag in self.get_tags_for_pos(self.pressed_x, self.pressed_y):
             if hasattr(tag, "url"):
                 return tag.url
 
         return ""
 
+    def grab_focus(self):
+        self.widget.grab_focus()
+
+    def place_cursor_at_line(self, line_number):
+        iterator = self.get_iter_at_line(line_number)
+        self.textbuffer.place_cursor(iterator)
+
+    def set_text(self, text):
+        """Sets text without any additional processing, and clears the undo stack."""
+
+        self.textbuffer.set_text(text)
+        self.end_iter = self.textbuffer.get_end_iter()
+
+    def update_cursor(self, pos_x, pos_y):
+
+        cursor = self.TEXT_CURSOR
+
+        if self.cursor_window is None:
+            self.cursor_window = self.widget.get_window(Gtk.TextWindowType.TEXT)  # pylint: disable=no-member
+
+        for tag in self.get_tags_for_pos(pos_x, pos_y):
+            if hasattr(tag, "username"):
+                cursor = self.DEFAULT_CURSOR
+                break
+
+            if hasattr(tag, "url"):
+                cursor = self.POINTER_CURSOR
+                break
+
+        if cursor != self.cursor_window.get_cursor():
+            self.cursor_window.set_cursor(cursor)
+
     def clear(self):
-        self.textbuffer.set_text("")
-        self.tag_urls.clear()
+        self.set_text("")
 
-    """ Text Tags (usernames, URLs) """
+    # Text Tags (Usernames, URLs) #
 
-    def create_tag(self, color=None, callback=None, username=None, url=None):
+    def create_tag(self, color_id=None, callback=None, username=None, url=None):
 
         tag = self.textbuffer.create_tag()
 
-        if color:
-            update_tag_visuals(tag, color=color)
-            tag.color = color
-
-        if self.font:
-            update_tag_visuals(tag, font=self.font)
+        if color_id:
+            update_tag_visuals(tag, color_id=color_id)
+            tag.color_id = color_id
 
         if url:
-            if url[:4] == "www.":
+            if url.startswith("www."):
                 url = "http://" + url
 
             tag.url = url
@@ -199,50 +289,192 @@ class TextView:
 
         return tag
 
-    def update_tag(self, tag, color=None):
+    def update_tag(self, tag, color_id=None):
 
-        if color is not None:
-            tag.color = color
+        if color_id is not None:
+            tag.color_id = color_id
 
-        update_tag_visuals(tag, tag.color, self.font)
+        update_tag_visuals(tag, color_id=tag.color_id)
 
     def update_tags(self):
-        for tag in self.tag_urls:
-            self.update_tag(tag)
+        self.textbuffer.get_tag_table().foreach(self.update_tag)
 
-    """ Events """
+    # Events #
 
-    def _callback_pressed(self, controller, num_p, x, y):
-        self.pressed_x = x
-        self.pressed_y = y
+    def on_released_primary(self, _controller, _num_p, pressed_x, pressed_y):
 
-    def _callback_released(self, controller, num_p, x, y):
+        self.pressed_x = pressed_x
+        self.pressed_y = pressed_y
 
-        if x != self.pressed_x or y != self.pressed_y:
+        if self.textbuffer.get_has_selection():
             return False
 
-        for tag in self.get_tags_for_selected_pos():
+        for tag in self.get_tags_for_pos(pressed_x, pressed_y):
             if hasattr(tag, "url"):
                 open_uri(tag.url)
                 return True
 
             if hasattr(tag, "username"):
-                tag.callback(x, y, tag.username)
+                tag.callback(pressed_x, pressed_y, tag.username)
                 return True
 
         return False
 
-    def on_copy_text(self, *args):
-        self.textview.emit("copy-clipboard")
+    def on_pressed_secondary(self, _controller, _num_p, pressed_x, pressed_y):
 
-    def on_copy_link(self, *args):
-        copy_text(self.get_url_for_selected_pos())
+        self.pressed_x = pressed_x
+        self.pressed_y = pressed_y
 
-    def on_copy_all_text(self, *args):
-        copy_all_text(self.textview)
+        if self.textbuffer.get_has_selection():
+            return False
 
-    def on_clear_all_text(self, *args):
+        for tag in self.get_tags_for_pos(pressed_x, pressed_y):
+            if hasattr(tag, "username"):
+                tag.callback(pressed_x, pressed_y, tag.username)
+                return True
+
+        return False
+
+    def on_move_cursor(self, _controller, pos_x, pos_y):
+        self.update_cursor(pos_x, pos_y)
+
+    def on_move_cursor_event(self, _widget, event):
+        self.update_cursor(event.x, event.y)
+
+    def on_copy_text(self, *_args):
+        self.widget.emit("copy-clipboard")
+
+    def on_copy_link(self, *_args):
+        clipboard.copy_text(self.get_url_for_current_pos())
+
+    def on_copy_all_text(self, *_args):
+        clipboard.copy_text(self.get_text())
+
+    def on_clear_all_text(self, *_args):
         self.clear()
 
-    def on_realize(self, *args):
-        self.scroll_bottom()
+    def on_adjustment_upper_changed(self, *_args):
+
+        new_adjustment_bottom = (self.adjustment.get_upper() - self.adjustment.get_page_size())
+
+        if self.auto_scroll and self.adjustment_value >= self.adjustment_bottom:
+            # Scroll to bottom if we were at the bottom previously
+            self.scroll_bottom()
+
+        self.adjustment_bottom = new_adjustment_bottom
+
+    def on_adjustment_value_changed(self, *_args):
+
+        new_value = self.adjustment.get_value()
+
+        if new_value.is_integer() and (0 < new_value < self.adjustment_bottom):
+            # The textview scrolls up on its own sometimes. Ignore these garbage values.
+            return
+
+        self.adjustment_value = new_value
+
+
+class ChatView(TextView):
+
+    def __init__(self, *args, chat_entry=None, status_users=None, username_event=None, **kwargs):
+
+        super().__init__(*args, **kwargs)
+
+        self.user_tags = self.status_users = {}
+        self.chat_entry = chat_entry
+        self.username_event = username_event
+
+        if status_users is not None:
+            # In chatrooms, we only want to set the online status for users that are
+            # currently in the room, even though we might know their global status
+            self.status_users = status_users
+
+        self.type_tags = {
+            "remote": self.create_tag("chatremote"),
+            "local": self.create_tag("chatlocal"),
+            "command": self.create_tag("chatcommand"),
+            "action": self.create_tag("chatme"),
+            "hilite": self.create_tag("chathilite")
+        }
+
+        Accelerator("Down", self.widget, self.on_page_down_accelerator)
+        Accelerator("Page_Down", self.widget, self.on_page_down_accelerator)
+
+    def append_log_lines(self, log_lines, login_username=None):
+
+        if not log_lines:
+            return
+
+        login_username_lower = login_username.lower() if login_username else None
+
+        for log_line in log_lines:
+            try:
+                line = log_line.decode("utf-8")
+
+            except UnicodeDecodeError:
+                line = log_line.decode("latin-1")
+
+            user = message_type = usertag = None
+
+            if " [" in line and "] " in line:
+                start = line.find(" [") + 2
+                end = line.find("] ", start)
+
+                if end > start:
+                    user = line[start:end]
+                    usertag = self.get_user_tag(user)
+
+                    text = line[end + 2:-1]
+
+                    if user == login_username:
+                        message_type = "local"
+
+                    elif login_username_lower and find_whole_word(login_username_lower, text.lower()) > -1:
+                        message_type = "hilite"
+
+                    else:
+                        message_type = "remote"
+
+            elif "* " in line:
+                message_type = "action"
+
+            self.append_line(line, message_type=message_type, username=user, usertag=usertag)
+
+        self.append_line(_("--- old messages above ---"), message_type="hilite")
+
+    def clear(self):
+        super().clear()
+        self.user_tags.clear()
+
+    def get_user_tag(self, username):
+
+        if username not in self.user_tags:
+            self.user_tags[username] = self.create_tag(callback=self.username_event, username=username)
+            self.update_user_tag(username)
+
+        return self.user_tags[username]
+
+    def update_user_tag(self, username):
+
+        if username not in self.user_tags:
+            return
+
+        status = UserStatus.OFFLINE
+
+        if username in self.status_users:
+            status = core.users.statuses.get(username, UserStatus.OFFLINE)
+
+        color = USER_STATUS_COLORS.get(status)
+        self.update_tag(self.user_tags[username], color)
+
+    def update_user_tags(self):
+        for username in self.user_tags:
+            self.update_user_tag(username)
+
+    def on_page_down_accelerator(self, *_args):
+        """Page_Down, Down: Give focus to text entry if already scrolled at the
+        bottom."""
+
+        if self.textbuffer.props.cursor_position >= self.textbuffer.get_char_count():
+            # Give focus to text entry upon scrolling down to the bottom
+            self.chat_entry.grab_focus_without_selecting()

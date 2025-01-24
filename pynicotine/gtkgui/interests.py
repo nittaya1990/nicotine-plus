@@ -1,5 +1,5 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
-# COPYRIGHT (C) 2006-2009 Daelstorm <daelstorm@gmail.com>
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
+# COPYRIGHT (C) 2006-2009 daelstorm <daelstorm@gmail.com>
 # COPYRIGHT (C) 2003-2004 Hyriand <hyriand@thegraveyard.org>
 #
 # GNU GENERAL PUBLIC LICENSE
@@ -20,376 +20,561 @@
 
 from gi.repository import GLib
 from gi.repository import GObject
-from gi.repository import Gtk
 
 from pynicotine.config import config
+from pynicotine.core import core
+from pynicotine.events import events
+from pynicotine.gtkgui.application import GTK_API_VERSION
+from pynicotine.gtkgui.widgets import ui
 from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
-from pynicotine.gtkgui.widgets.treeview import initialise_columns
-from pynicotine.gtkgui.widgets.treeview import show_user_status_tooltip
-from pynicotine.gtkgui.widgets.theme import get_status_image
-from pynicotine.gtkgui.widgets.theme import update_widget_visuals
-from pynicotine.gtkgui.widgets.ui import UserInterface
+from pynicotine.gtkgui.widgets.popupmenu import UserPopupMenu
+from pynicotine.gtkgui.widgets.treeview import TreeView
+from pynicotine.gtkgui.widgets.theme import USER_STATUS_ICON_NAMES
+from pynicotine.gtkgui.widgets.theme import get_flag_icon_name
+from pynicotine.slskmessages import UserStatus
 from pynicotine.utils import humanize
 from pynicotine.utils import human_speed
 
 
-class Interests(UserInterface):
+class Interests:
 
-    def __init__(self, frame):
+    def __init__(self, window):
 
-        super().__init__("ui/interests.ui")
-        frame.interestsvbox.add(self.Main)
+        (
+            self.add_dislike_entry,
+            self.add_like_entry,
+            self.container,
+            self.dislikes_list_container,
+            self.likes_list_container,
+            self.recommendations_button,
+            self.recommendations_label,
+            self.recommendations_list_container,
+            self.similar_users_label,
+            self.similar_users_list_container
+        ) = ui.load(scope=self, path="interests.ui")
 
-        self.frame = frame
-        self.page_id = "interests"
+        if GTK_API_VERSION >= 4:
+            window.interests_container.append(self.container)
+        else:
+            window.interests_container.add(self.container)
+
+        self.window = window
+        self.page = window.interests_page
+        self.page.id = "interests"
+        self.toolbar = window.interests_toolbar
+        self.toolbar_start_content = window.interests_title
+        self.toolbar_end_content = window.interests_end
+        self.toolbar_default_widget = None
+        self.popup_menus = []
+
         self.populated_recommends = False
 
-        self.likes = {}
-        self.likes_model = Gtk.ListStore(str)
-        self.likes_model.set_sort_column_id(0, Gtk.SortType.ASCENDING)
-
-        self.likes_column_numbers = list(range(self.likes_model.get_n_columns()))
-        cols = initialise_columns(
-            None, self.LikesList,
-            ["likes", _("Likes"), -1, "text", None]
+        # Columns
+        self.likes_list_view = TreeView(
+            window, parent=self.likes_list_container,
+            delete_accelerator_callback=self.on_remove_thing_i_like,
+            columns={
+                "likes": {
+                    "column_type": "text",
+                    "title": _("Likes"),
+                    "default_sort_type": "ascending"
+                }
+            }
         )
 
-        cols["likes"].set_sort_column_id(0)
-        self.LikesList.set_model(self.likes_model)
-
-        self.dislikes = {}
-        self.dislikes_model = Gtk.ListStore(str)
-        self.dislikes_model.set_sort_column_id(0, Gtk.SortType.ASCENDING)
-
-        self.dislikes_column_numbers = list(range(self.dislikes_model.get_n_columns()))
-        cols = initialise_columns(
-            None, self.DislikesList,
-            ["dislikes", _("Dislikes"), -1, "text", None]
+        self.dislikes_list_view = TreeView(
+            window, parent=self.dislikes_list_container,
+            delete_accelerator_callback=self.on_remove_thing_i_dislike,
+            columns={
+                "dislikes": {
+                    "column_type": "text",
+                    "title": _("Dislikes"),
+                    "default_sort_type": "ascending"
+                }
+            }
         )
 
-        cols["dislikes"].set_sort_column_id(0)
-        self.DislikesList.set_model(self.dislikes_model)
+        self.recommendations_list_view = TreeView(
+            window, parent=self.recommendations_list_container,
+            activate_row_callback=self.on_r_row_activated,
+            columns={
+                # Visible columns
+                "rating": {
+                    "column_type": "number",
+                    "title": _("Rating"),
+                    "width": 0,
+                    "sort_column": "rating_data",
+                    "default_sort_type": "descending"
+                },
+                "item": {
+                    "column_type": "text",
+                    "title": _("Item"),
+                    "iterator_key": True
+                },
 
-        self.recommendations_model = Gtk.ListStore(
-            str,  # (0) hrating
-            str,  # (1) item
-            int   # (2) rating
+                # Hidden data columns
+                "rating_data": {"data_type": GObject.TYPE_INT}
+            }
         )
 
-        self.recommendations_column_numbers = list(range(self.recommendations_model.get_n_columns()))
-        cols = initialise_columns(
-            None, self.RecommendationsList,
-            ["rating", _("Rating"), 0, "number", None],
-            ["item", _("Item"), -1, "text", None]
+        self.similar_users_list_view = TreeView(
+            window, parent=self.similar_users_list_container,
+            activate_row_callback=self.on_ru_row_activated,
+            columns={
+                # Visible columns
+                "status": {
+                    "column_type": "icon",
+                    "title": _("Status"),
+                    "width": 25,
+                    "hide_header": True
+                },
+                "country": {
+                    "column_type": "icon",
+                    "title": _("Country"),
+                    "width": 30,
+                    "hide_header": True
+                },
+                "user": {
+                    "column_type": "text",
+                    "title": _("User"),
+                    "width": 120,
+                    "expand_column": True,
+                    "iterator_key": True
+                },
+                "speed": {
+                    "column_type": "number",
+                    "title": _("Speed"),
+                    "width": 90,
+                    "sort_column": "speed_data",
+                    "expand_column": True
+                },
+                "files": {
+                    "column_type": "number",
+                    "title": _("Files"),
+                    "sort_column": "files_data",
+                    "expand_column": True
+                },
+
+                # Hidden data columns
+                "speed_data": {"data_type": GObject.TYPE_UINT},
+                "files_data": {"data_type": GObject.TYPE_UINT},
+                "rating_data": {
+                    "data_type": GObject.TYPE_UINT,
+                    "default_sort_type": "descending"
+                }
+            }
         )
 
-        cols["rating"].set_sort_column_id(2)
-        cols["item"].set_sort_column_id(1)
+        self.likes_list_view.freeze()
+        self.dislikes_list_view.freeze()
 
-        self.RecommendationsList.set_model(self.recommendations_model)
+        for item in config.sections["interests"]["likes"]:
+            if isinstance(item, str):
+                self.add_thing_i_like(item, select_row=False)
 
-        self.recommendation_users = {}
-        self.recommendation_users_model = Gtk.ListStore(
-            GObject.TYPE_OBJECT,  # (0) status icon
-            str,                  # (1) user
-            str,                  # (2) hspeed
-            str,                  # (3) hfiles
-            int,                  # (4) status
-            GObject.TYPE_UINT64,  # (5) speed
-            GObject.TYPE_UINT64   # (6) file count
-        )
+        for item in config.sections["interests"]["dislikes"]:
+            if isinstance(item, str):
+                self.add_thing_i_hate(item, select_row=False)
 
-        self.recommendation_users_column_numbers = list(range(self.recommendation_users_model.get_n_columns()))
-        cols = initialise_columns(
-            None, self.RecommendationUsersList,
-            ["status", _("Status"), 25, "pixbuf", None],
-            ["user", _("User"), 100, "text", None],
-            ["speed", _("Speed"), 100, "text", None],
-            ["files", _("Files"), 100, "text", None],
-        )
+        self.likes_list_view.unfreeze()
+        self.dislikes_list_view.unfreeze()
 
-        cols["status"].set_sort_column_id(4)
-        cols["user"].set_sort_column_id(1)
-        cols["speed"].set_sort_column_id(5)
-        cols["files"].set_sort_column_id(6)
-
-        cols["status"].get_widget().hide()
-
-        self.RecommendationUsersList.set_model(self.recommendation_users_model)
-        self.recommendation_users_model.set_sort_column_id(1, Gtk.SortType.ASCENDING)
-
-        for thing in config.sections["interests"]["likes"]:
-            if thing and isinstance(thing, str):
-                self.likes[thing] = self.likes_model.insert_with_valuesv(-1, self.likes_column_numbers, [thing])
-
-        for thing in config.sections["interests"]["dislikes"]:
-            if thing and isinstance(thing, str):
-                self.dislikes[thing] = self.dislikes_model.insert_with_valuesv(
-                    -1, self.dislikes_column_numbers, [thing])
-
-        """ Popup """
-
-        self.til_popup_menu = popup = PopupMenu(self.frame, self.LikesList, self.on_popup_til_menu)
-        popup.setup(
-            ("#" + _("_Remove Item"), self.on_remove_thing_i_like),
-            ("#" + _("Re_commendations for Item"), self.on_recommend_item),
+        # Popup menus
+        popup = PopupMenu(self.window.application, self.likes_list_view.widget)
+        popup.add_items(
+            ("#" + _("_Recommendations for Item"), self.on_recommend_item, self.likes_list_view, "likes"),
+            ("#" + _("_Search for Item"), self.on_recommend_search, self.likes_list_view, "likes"),
             ("", None),
-            ("#" + _("_Search for Item"), self.on_til_recommend_search)
+            ("#" + _("Remove"), self.on_remove_thing_i_like)
         )
+        self.popup_menus.append(popup)
 
-        self.tidl_popup_menu = popup = PopupMenu(self.frame, self.DislikesList, self.on_popup_til_menu)
-        popup.setup(
-            ("#" + _("_Remove Item"), self.on_remove_thing_i_dislike),
+        popup = PopupMenu(self.window.application, self.dislikes_list_view.widget)
+        popup.add_items(
+            ("#" + _("_Recommendations for Item"), self.on_recommend_item, self.dislikes_list_view, "dislikes"),
+            ("#" + _("_Search for Item"), self.on_recommend_search, self.dislikes_list_view, "dislikes"),
             ("", None),
-            ("#" + _("_Search for Item"), self.on_tidl_recommend_search)
+            ("#" + _("Remove"), self.on_remove_thing_i_dislike)
         )
+        self.popup_menus.append(popup)
 
-        self.r_popup_menu = popup = PopupMenu(self.frame, self.RecommendationsList, self.on_popup_r_menu)
-        popup.setup(
-            ("$" + _("I _Like This"), self.on_like_recommendation),
-            ("$" + _("I _Dislike This"), self.on_dislike_recommendation),
-            ("#" + _("_Recommendations for Item"), self.on_recommend_recommendation),
+        popup = PopupMenu(self.window.application, self.recommendations_list_view.widget, self.on_popup_r_menu)
+        popup.add_items(
+            ("$" + _("I _Like This"), self.on_like_recommendation, self.recommendations_list_view, "item"),
+            ("$" + _("I _Dislike This"), self.on_dislike_recommendation, self.recommendations_list_view, "item"),
             ("", None),
-            ("#" + _("_Search for Item"), self.on_r_recommend_search)
+            ("#" + _("_Recommendations for Item"), self.on_recommend_item, self.recommendations_list_view, "item"),
+            ("#" + _("_Search for Item"), self.on_recommend_search, self.recommendations_list_view, "item")
         )
+        self.popup_menus.append(popup)
 
-        self.ru_popup_menu = popup = PopupMenu(self.frame, self.RecommendationUsersList, self.on_popup_ru_menu)
-        popup.setup_user_menu()
+        popup = UserPopupMenu(
+            self.window.application, parent=self.similar_users_list_view.widget, callback=self.on_popup_ru_menu,
+            tab_name="interests"
+        )
+        self.popup_menus.append(popup)
 
-        self.update_visuals()
+        for event_name, callback in (
+            ("add-dislike", self.add_thing_i_hate),
+            ("add-interest", self.add_thing_i_like),
+            ("global-recommendations", self.global_recommendations),
+            ("item-recommendations", self.item_recommendations),
+            ("item-similar-users", self.item_similar_users),
+            ("recommendations", self.recommendations),
+            ("remove-dislike", self.remove_thing_i_hate),
+            ("remove-interest", self.remove_thing_i_like),
+            ("server-login", self.server_login),
+            ("server-disconnect", self.server_disconnect),
+            ("similar-users", self.similar_users),
+            ("user-country", self.user_country),
+            ("user-stats", self.user_stats),
+            ("user-status", self.user_status)
+        ):
+            events.connect(event_name, callback)
 
-    def server_login(self):
+    def destroy(self):
 
-        if self.frame.current_page_id != self.page_id:
+        for menu in self.popup_menus:
+            menu.destroy()
+
+        self.likes_list_view.destroy()
+        self.dislikes_list_view.destroy()
+        self.recommendations_list_view.destroy()
+        self.similar_users_list_view.destroy()
+
+        self.__dict__.clear()
+
+    def on_focus(self, *_args):
+
+        self.populate_recommendations()
+        self.recommendations_list_view.grab_focus()
+        return True
+
+    def server_login(self, msg):
+
+        if not msg.success:
+            return
+
+        self.recommendations_button.set_sensitive(True)
+
+        if self.window.current_page_id != self.window.interests_page.id:
             # Only populate recommendations if the tab is open on login
             return
 
         self.populate_recommendations()
 
-    def populate_recommendations(self):
-        """ Populates the lists of recommendations and similar users if empty """
+    def server_disconnect(self, *_args):
 
-        if self.populated_recommends or not self.frame.np.logged_in:
+        self.recommendations_button.set_sensitive(False)
+
+        for iterator in self.similar_users_list_view.iterators.values():
+            self.similar_users_list_view.set_row_value(iterator, "status", USER_STATUS_ICON_NAMES[UserStatus.OFFLINE])
+
+        self.populated_recommends = False
+
+    def populate_recommendations(self):
+        """Populates the lists of recommendations and similar users if
+        empty."""
+
+        if self.populated_recommends or core.users.login_status == UserStatus.OFFLINE:
             return
 
-        self.on_recommendations_clicked()
-        self.on_similar_users_clicked()
+        self.show_recommendations()
 
+    def show_recommendations(self):
+
+        self.recommendations_label.set_label(_("Recommendations"))
+        self.similar_users_label.set_label(_("Similar Users"))
+
+        if not self.likes_list_view.iterators and not self.dislikes_list_view.iterators:
+            core.interests.request_global_recommendations()
+        else:
+            core.interests.request_recommendations()
+
+        core.interests.request_similar_users()
         self.populated_recommends = True
 
-    def recommend_search(self, item):
-        self.frame.SearchEntry.set_text(item)
-        self.frame.change_main_page("search")
+    def show_item_recommendations(self, list_view, column_id):
 
-    def on_add_thing_i_like(self, widget, *args):
+        for iterator in list_view.get_selected_rows():
+            item = list_view.get_row_value(iterator, column_id)
 
-        thing = widget.get_text().lower()
-        widget.set_text("")
+            core.interests.request_item_recommendations(item)
+            core.interests.request_item_similar_users(item)
+            self.populated_recommends = True
 
-        if self.frame.np.interests.add_thing_i_like(thing):
-            self.likes[thing] = self.likes_model.insert_with_valuesv(-1, self.likes_column_numbers, [thing])
-
-    def on_add_thing_i_dislike(self, widget, *args):
-
-        thing = widget.get_text().lower()
-        widget.set_text("")
-
-        if self.frame.np.interests.add_thing_i_hate(thing):
-            self.dislikes[thing] = self.dislikes_model.insert_with_valuesv(-1, self.dislikes_column_numbers, [thing])
-
-    def on_remove_thing_i_like(self, *args):
-
-        thing = self.til_popup_menu.get_user()
-
-        if not self.frame.np.interests.remove_thing_i_like(thing):
+            if self.window.current_page_id != self.window.interests_page.id:
+                self.window.change_main_page(self.window.interests_page)
             return
 
-        self.likes_model.remove(self.likes[thing])
-        del self.likes[thing]
+    def add_thing_i_like(self, item, select_row=True):
 
-    def on_til_recommend_search(self, *args):
-        self.recommend_search(self.til_popup_menu.get_user())
+        item = item.strip().lower()
 
-    def on_remove_thing_i_dislike(self, *args):
-
-        thing = self.tidl_popup_menu.get_user()
-
-        if not self.frame.np.interests.remove_thing_i_hate(thing):
+        if not item:
             return
 
-        self.dislikes_model.remove(self.dislikes[thing])
-        del self.dislikes[thing]
-
-    def on_tidl_recommend_search(self, *args):
-        self.recommend_search(self.tidl_popup_menu.get_user())
-
-    def on_like_recommendation(self, action, state, thing=None):
-
-        if thing is None:
-            thing = self.r_popup_menu.get_user()
-
-        if state.get_boolean() and self.frame.np.interests.add_thing_i_like(thing):
-            self.likes[thing] = self.likes_model.insert_with_valuesv(-1, self.likes_column_numbers, [thing])
-
-        elif not state.get_boolean() and self.frame.np.interests.remove_thing_i_like(thing):
-            self.likes_model.remove(self.likes[thing])
-            del self.likes[thing]
-
-        action.set_state(state)
-
-    def on_dislike_recommendation(self, action, state, thing=None):
-
-        if thing is None:
-            thing = self.r_popup_menu.get_user()
-
-        if state.get_boolean() and thing and self.frame.np.interests.add_thing_i_hate(thing):
-            self.dislikes[thing] = self.dislikes_model.insert_with_valuesv(-1, self.dislikes_column_numbers, [thing])
-
-        elif not state.get_boolean() and self.frame.np.interests.remove_thing_i_hate(thing):
-            self.dislikes_model.remove(self.dislikes[thing])
-            del self.dislikes[thing]
-
-        action.set_state(state)
-
-    def on_recommend_item(self, *args):
-
-        thing = self.til_popup_menu.get_user()
-        self.frame.np.interests.request_item_recommendations(thing)
-        self.frame.np.interests.request_item_similar_users(thing)
-
-    def on_recommend_recommendation(self, *args):
-
-        thing = self.r_popup_menu.get_user()
-        self.frame.np.interests.request_item_recommendations(thing)
-        self.frame.np.interests.request_item_similar_users(thing)
-
-    def on_r_recommend_search(self, *args):
-        self.recommend_search(self.r_popup_menu.get_user())
-
-    def on_recommendations_clicked(self, *args):
-
-        if not self.likes and not self.dislikes:
-            self.frame.np.interests.request_global_recommendations()
-            return
-
-        self.frame.np.interests.request_recommendations()
-
-    def on_similar_users_clicked(self, *args):
-        self.frame.np.interests.request_similar_users()
-
-    def set_recommendations(self, recom):
-        self.recommendations_model.clear()
-
-        for (thing, rating) in recom.items():
-            self.recommendations_model.insert_with_valuesv(
-                -1, self.recommendations_column_numbers, [humanize(rating), thing, rating]
-            )
-
-        self.recommendations_model.set_sort_column_id(2, Gtk.SortType.DESCENDING)
-
-    def global_recommendations(self, msg):
-        self.set_recommendations({**msg.recommendations, **msg.unrecommendations})
-
-    def recommendations(self, msg):
-        self.set_recommendations({**msg.recommendations, **msg.unrecommendations})
-
-    def item_recommendations(self, msg):
-        self.set_recommendations({**msg.recommendations, **msg.unrecommendations})
-
-    def similar_users(self, msg):
-
-        self.recommendation_users_model.clear()
-        self.recommendation_users = {}
-
-        for user in msg.users:
-            iterator = self.recommendation_users_model.insert_with_valuesv(
-                -1, self.recommendation_users_column_numbers,
-                [GObject.Value(GObject.TYPE_OBJECT, get_status_image(0)), user, "", "0", 0, 0, 0]
-            )
-            self.recommendation_users[user] = iterator
-
-            # Request user status, speed and number of shared files
-            self.frame.np.watch_user(user, force_update=True)
-
-    def get_user_status(self, msg):
-
-        if msg.user not in self.recommendation_users:
-            return
-
-        img = get_status_image(msg.status)
-        self.recommendation_users_model.set(self.recommendation_users[msg.user], 0, img, 4, msg.status)
-
-    def get_user_stats(self, msg):
-
-        if msg.user not in self.recommendation_users:
-            return
-
-        h_speed = ""
-        avgspeed = msg.avgspeed
-
-        if avgspeed > 0:
-            h_speed = human_speed(avgspeed)
-
-        files = msg.files
-        h_files = humanize(msg.files)
-
-        self.recommendation_users_model.set(
-            self.recommendation_users[msg.user], 2, h_speed, 3, h_files, 5, avgspeed, 6, files)
-
-    def get_selected_item(self, treeview, column=0):
-
-        model, iterator = treeview.get_selection().get_selected()
+        iterator = self.likes_list_view.iterators.get(item)
 
         if iterator is None:
-            return None
+            self.likes_list_view.add_row([item], select_row=select_row)
 
-        return model.get_value(iterator, column)
+    def add_thing_i_hate(self, item, select_row=True):
 
-    def on_popup_til_menu(self, menu, widget):
+        item = item.strip().lower()
 
-        item = self.get_selected_item(widget, column=0)
-        if item is None:
-            return True
+        if not item:
+            return
 
-        menu.set_user(item)
+        iterator = self.dislikes_list_view.iterators.get(item)
 
-    def on_popup_r_menu(self, menu, widget):
+        if iterator is None:
+            self.dislikes_list_view.add_row([item], select_row=select_row)
 
-        item = self.get_selected_item(widget, column=1)
-        if item is None:
-            return True
+    def remove_thing_i_like(self, item):
 
-        menu.set_user(item)
+        iterator = self.likes_list_view.iterators.get(item)
 
-        actions = menu.get_actions()
-        actions[_("I _Like This")].set_state(
-            GLib.Variant.new_boolean(item in config.sections["interests"]["likes"])
-        )
-        actions[_("I _Dislike This")].set_state(
-            GLib.Variant.new_boolean(item in config.sections["interests"]["dislikes"])
-        )
+        if iterator is not None:
+            self.likes_list_view.remove_row(iterator)
 
-    def on_popup_ru_menu(self, menu, widget):
+    def remove_thing_i_hate(self, item):
 
-        user = self.get_selected_item(widget, column=1)
-        if user is None:
-            return True
+        iterator = self.dislikes_list_view.iterators.get(item)
 
-        menu.set_user(user)
-        menu.toggle_user_items()
+        if iterator is not None:
+            self.dislikes_list_view.remove_row(iterator)
 
-    def on_ru_row_activated(self, treeview, path, column):
+    def on_add_thing_i_like(self, *_args):
 
-        user = self.get_selected_item(treeview, column=1)
+        item = self.add_like_entry.get_text().strip()
 
-        if user is not None:
-            self.frame.np.privatechats.show_user(user)
-            self.frame.change_main_page("private")
+        if not item:
+            return
 
-    def on_tooltip(self, widget, x, y, keyboard_mode, tooltip):
-        return show_user_status_tooltip(widget, x, y, tooltip, 4)
+        self.add_like_entry.set_text("")
+        core.interests.add_thing_i_like(item)
 
-    def update_visuals(self):
+    def on_add_thing_i_dislike(self, *_args):
 
-        for widget in list(self.__dict__.values()):
-            update_widget_visuals(widget)
+        item = self.add_dislike_entry.get_text().strip()
+
+        if not item:
+            return
+
+        self.add_dislike_entry.set_text("")
+        core.interests.add_thing_i_hate(item)
+
+    def on_remove_thing_i_like(self, *_args):
+
+        for iterator in self.likes_list_view.get_selected_rows():
+            item = self.likes_list_view.get_row_value(iterator, "likes")
+
+            core.interests.remove_thing_i_like(item)
+            return
+
+    def on_remove_thing_i_dislike(self, *_args):
+
+        for iterator in self.dislikes_list_view.get_selected_rows():
+            item = self.dislikes_list_view.get_row_value(iterator, "dislikes")
+
+            core.interests.remove_thing_i_hate(item)
+            return
+
+    def on_like_recommendation(self, action, state, list_view, column_id):
+
+        for iterator in list_view.get_selected_rows():
+            item = list_view.get_row_value(iterator, column_id)
+
+            if state.get_boolean():
+                core.interests.add_thing_i_like(item)
+            else:
+                core.interests.remove_thing_i_like(item)
+
+            action.set_state(state)
+            return
+
+    def on_dislike_recommendation(self, action, state, list_view, column_id):
+
+        for iterator in list_view.get_selected_rows():
+            item = list_view.get_row_value(iterator, column_id)
+
+            if state.get_boolean():
+                core.interests.add_thing_i_hate(item)
+            else:
+                core.interests.remove_thing_i_hate(item)
+
+            action.set_state(state)
+            return
+
+    def on_recommend_item(self, _action, _state, list_view, column_id):
+        self.show_item_recommendations(list_view, column_id)
+
+    def on_recommend_search(self, _action, _state, list_view, column_id):
+
+        for iterator in list_view.get_selected_rows():
+            item = list_view.get_row_value(iterator, column_id)
+
+            core.search.do_search(item, mode="global")
+            return
+
+    def on_refresh_recommendations(self, *_args):
+        self.show_recommendations()
+
+    def set_recommendations(self, recommendations, item=None):
+
+        if item:
+            self.recommendations_label.set_label(_("Recommendations (%s)") % item)
+        else:
+            self.recommendations_label.set_label(_("Recommendations"))
+
+        self.recommendations_list_view.clear()
+        self.recommendations_list_view.freeze()
+
+        for thing, rating in recommendations:
+            self.recommendations_list_view.add_row([humanize(rating), thing, rating], select_row=False)
+
+        self.recommendations_list_view.unfreeze()
+
+    def global_recommendations(self, msg):
+        self.set_recommendations(msg.recommendations + msg.unrecommendations)
+
+    def recommendations(self, msg):
+        self.set_recommendations(msg.recommendations + msg.unrecommendations)
+
+    def item_recommendations(self, msg):
+        self.set_recommendations(msg.recommendations + msg.unrecommendations, msg.thing)
+
+    def set_similar_users(self, users, item=None):
+
+        if item:
+            self.similar_users_label.set_label(_("Similar Users (%s)") % item)
+        else:
+            self.similar_users_label.set_label(_("Similar Users"))
+
+        self.similar_users_list_view.clear()
+        self.similar_users_list_view.freeze()
+
+        for index, (user, rating) in enumerate(reversed(list(users.items()))):
+            status = core.users.statuses.get(user, UserStatus.OFFLINE)
+            country_code = core.users.countries.get(user, "")
+            stats = core.users.watched.get(user)
+            rating = index + (1000 * rating)  # Preserve default sort order
+
+            if stats is not None:
+                speed = stats.upload_speed or 0
+                files = stats.files
+            else:
+                speed = 0
+                files = None
+
+            h_files = humanize(files) if files is not None else ""
+            h_speed = human_speed(speed) if speed > 0 else ""
+
+            self.similar_users_list_view.add_row([
+                USER_STATUS_ICON_NAMES[status],
+                get_flag_icon_name(country_code),
+                user,
+                h_speed,
+                h_files,
+                speed,
+                files or 0,
+                rating
+            ], select_row=False)
+
+        self.similar_users_list_view.unfreeze()
+
+    def similar_users(self, msg):
+        self.set_similar_users(msg.users)
+
+    def item_similar_users(self, msg):
+        rating = 0
+        self.set_similar_users({user: rating for user in msg.users}, msg.thing)
+
+    def user_country(self, user, country_code):
+
+        iterator = self.similar_users_list_view.iterators.get(user)
+
+        if iterator is None:
+            return
+
+        flag_icon_name = get_flag_icon_name(country_code)
+
+        if flag_icon_name and flag_icon_name != self.similar_users_list_view.get_row_value(iterator, "country"):
+            self.similar_users_list_view.set_row_value(iterator, "country", flag_icon_name)
+
+    def user_status(self, msg):
+
+        iterator = self.similar_users_list_view.iterators.get(msg.user)
+
+        if iterator is None:
+            return
+
+        status_icon_name = USER_STATUS_ICON_NAMES.get(msg.status)
+
+        if status_icon_name and status_icon_name != self.similar_users_list_view.get_row_value(iterator, "status"):
+            self.similar_users_list_view.set_row_value(iterator, "status", status_icon_name)
+
+    def user_stats(self, msg):
+
+        iterator = self.similar_users_list_view.iterators.get(msg.user)
+
+        if iterator is None:
+            return
+
+        speed = msg.avgspeed or 0
+        num_files = msg.files or 0
+        column_ids = []
+        column_values = []
+
+        if speed != self.similar_users_list_view.get_row_value(iterator, "speed_data"):
+            h_speed = human_speed(speed) if speed > 0 else ""
+
+            column_ids.extend(("speed", "speed_data"))
+            column_values.extend((h_speed, speed))
+
+        if num_files != self.similar_users_list_view.get_row_value(iterator, "files_data"):
+            h_num_files = humanize(num_files)
+
+            column_ids.extend(("files", "files_data"))
+            column_values.extend((h_num_files, num_files))
+
+        if column_ids:
+            self.similar_users_list_view.set_row_values(iterator, column_ids, column_values)
+
+    @staticmethod
+    def toggle_menu_items(menu, list_view, column_id):
+
+        for iterator in list_view.get_selected_rows():
+            item = list_view.get_row_value(iterator, column_id)
+
+            menu.actions[_("I _Like This")].set_state(
+                GLib.Variant.new_boolean(item in config.sections["interests"]["likes"])
+            )
+            menu.actions[_("I _Dislike This")].set_state(
+                GLib.Variant.new_boolean(item in config.sections["interests"]["dislikes"])
+            )
+            return
+
+    def on_popup_r_menu(self, menu, *_args):
+        self.toggle_menu_items(menu, self.recommendations_list_view, column_id="item")
+
+    def on_r_row_activated(self, *_args):
+        self.show_item_recommendations(self.recommendations_list_view, column_id="item")
+
+    def on_popup_ru_menu(self, menu, *_args):
+
+        for iterator in self.similar_users_list_view.get_selected_rows():
+            user = self.similar_users_list_view.get_row_value(iterator, "user")
+
+            menu.set_user(user)
+            menu.toggle_user_items()
+            return
+
+    def on_ru_row_activated(self, *_args):
+
+        for iterator in self.similar_users_list_view.get_selected_rows():
+            user = self.similar_users_list_view.get_row_value(iterator, "user")
+
+            core.userinfo.show_user(user)
+            return

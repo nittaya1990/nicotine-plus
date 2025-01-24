@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -27,25 +27,21 @@ class Plugin(BasePlugin):
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            'rooms': ['testroom']
+            "rooms": ["testroom"]
         }
         self.metasettings = {
-            'rooms': {
-                'description': 'Rooms to broadcast in',
-                'type': 'list string'
+            "rooms": {
+                "description": "Rooms to broadcast in",
+                "type": "list string"
             }
         }
 
         self.last_song_url = ""
         self.stop = False
 
-        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.bus = Gio.bus_get_sync(bus_type=Gio.BusType.SESSION)
         self.signal_id = None
-
-        self.dbus_mpris_service = 'org.mpris.MediaPlayer2.'
-        self.dbus_mpris_player_service = 'org.mpris.MediaPlayer2.Player'
-        self.dbus_mpris_path = '/org/mpris/MediaPlayer2'
-        self.dbus_property = 'org.freedesktop.DBus.Properties'
+        self.dbus_mpris_service = "org.mpris.MediaPlayer2."
 
         self.add_mpris_signal_receiver()
 
@@ -53,27 +49,39 @@ class Plugin(BasePlugin):
         self.remove_mpris_signal_receiver()
 
     def add_mpris_signal_receiver(self):
-        """ Receive updates related to MPRIS """
+        """Receive updates related to MPRIS."""
 
         self.signal_id = self.bus.signal_subscribe(
-            None, self.dbus_property, "PropertiesChanged", self.dbus_mpris_path,
-            None, Gio.DBusSignalFlags.NONE, self.song_change)
+            sender=None,
+            interface_name="org.freedesktop.DBus.Properties",
+            member="PropertiesChanged",
+            object_path="/org/mpris/MediaPlayer2",
+            arg0=None,
+            flags=Gio.DBusSignalFlags.NONE,
+            callback=self.song_change,
+            user_data=None
+        )
 
     def remove_mpris_signal_receiver(self):
-        """ Stop receiving updates related to MPRIS """
+        """Stop receiving updates related to MPRIS."""
 
         self.bus.signal_unsubscribe(self.signal_id)
 
     def get_current_mpris_player(self):
-        """ Returns the MPRIS client currently selected in Now Playing """
+        """Returns the MPRIS client currently selected in Now Playing."""
 
         player = self.config.sections["players"]["npothercommand"]
 
         if not player:
             dbus_proxy = Gio.DBusProxy.new_sync(
-                self.bus, Gio.DBusProxyFlags.NONE, None,
-                'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', None)
-
+                connection=self.bus,
+                flags=Gio.DBusProxyFlags.NONE,
+                info=None,
+                name="org.freedesktop.DBus",
+                object_path="/org/freedesktop/DBus",
+                interface_name="org.freedesktop.DBus",
+                cancellable=None
+            )
             names = dbus_proxy.ListNames()
 
             for name in names:
@@ -84,27 +92,33 @@ class Plugin(BasePlugin):
         return player
 
     def get_current_mpris_song_url(self, player):
-        """ Returns the current song url for the selected MPRIS client """
+        """Returns the current song url for the selected MPRIS client."""
 
         dbus_proxy = Gio.DBusProxy.new_sync(
-            self.bus, Gio.DBusProxyFlags.NONE, None,
-            self.dbus_mpris_service + player, self.dbus_mpris_path, self.dbus_property, None)
-
-        metadata = dbus_proxy.Get('(ss)', self.dbus_mpris_player_service, 'Metadata')
+            connection=self.bus,
+            flags=Gio.DBusProxyFlags.NONE,
+            info=None,
+            name=self.dbus_mpris_service + player,
+            object_path="/org/mpris/MediaPlayer2",
+            interface_name="org.freedesktop.DBus.Properties",
+            cancellable=None
+        )
+        metadata = dbus_proxy.Get("(ss)", "org.mpris.MediaPlayer2.Player", "Metadata")
         song_url = metadata.get("xesam:url")
 
         return song_url
 
     def send_now_playing(self):
-        """ Broadcast Now Playing in selected rooms """
+        """Broadcast Now Playing in selected rooms."""
 
-        for room in self.settings['rooms']:
+        for room in self.settings["rooms"]:
             playing = self.core.now_playing.get_np()
 
             if playing:
                 self.send_public(room, playing)
 
-    def song_change(self, _connection, _sender_name, _object_path, _interface_name, _signal_name, parameters):
+    def song_change(self, _connection, _sender_name, _object_path, _interface_name,
+                    _signal_name, parameters, _user_data):
 
         if self.config.sections["players"]["npplayer"] != "mpris":
             # MPRIS is not active, exit
@@ -130,8 +144,9 @@ class Plugin(BasePlugin):
             player = self.get_current_mpris_player()
             selected_client_song_url = self.get_current_mpris_song_url(player)
 
-        except Exception:
+        except Exception as error:
             # Selected player is invalid
+            self.log("Cannot retrieve currently playing song. Error: %s", error)
             return
 
         if selected_client_song_url != changed_song_url:

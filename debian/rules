@@ -1,21 +1,20 @@
 #! /usr/bin/make -f
 #
 # 	Nicotine+
-#	Copyright (C) 2021 Nicotine+ Team
+#	Copyright (C) 2021-2024 Nicotine+ Contributors
 #	Copyright (C) 2016 Kip Warner. Released under the GPLv3 or later.
 #
 
-# Output every command that modifies files on the build system...
-DH_VERBOSE = 1
+# Output every command that modifies files on the build system
+export DH_VERBOSE=1
 export DH_OPTIONS=-v
+
+# Disable tests requiring internet connection
+export PYBUILD_TEST_ARGS=-k "not test_update_check"
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
-# Use Xvfb to test startup without requiring an actual X server...
-override_dh_auto_test:
-	xvfb-run dh_auto_test
-
-# Enforce xz compression format for increased compatibility with older systems...
+# Enforce gzip compression format for increased compatibility with older systems
 override_dh_builddeb:
-	dh_builddeb -- -Zxz
+	dh_builddeb -- -Zgzip

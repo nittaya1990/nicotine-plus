@@ -1,5 +1,5 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
-# COPYRIGHT (C) 2009 Quinox <quinox@users.sf.net>
+# COPYRIGHT (C) 2020-2023 Nicotine+ Contributors
+# COPYRIGHT (C) 2009 quinox <quinox@users.sf.net>
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -27,17 +27,17 @@ class Plugin(BasePlugin):
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            'maxscore': 0.6,
-            'minlength': 10
+            "maxscore": 0.6,
+            "minlength": 10
         }
         self.metasettings = {
-            'maxscore': {
-                'description': 'The maximum ratio capitals/noncapitals before fixing capitalization',
-                'type': 'float', 'minimum': 0, 'maximum': 1, 'stepsize': 0.1
+            "maxscore": {
+                "description": "The maximum ratio of capitals before converting",
+                "type": "float", "minimum": 0, "maximum": 1, "stepsize": 0.1
             },
-            'minlength': {
-                'description': 'Lines shorter than this never not be altered', 'type': 'integer',
-                'minimum': 0
+            "minlength": {
+                "description": "Lines shorter than this will be ignored", "type": "integer",
+                "minimum": 0
             }
         }
 
@@ -45,16 +45,16 @@ class Plugin(BasePlugin):
     def capitalize(text):
 
         # Dont alter words that look like protocol links (fe http://, ftp://)
-        if text.find('://') > -1:
+        if text.find("://") > -1:
             return text
 
         return text.capitalize()
 
     def incoming_private_chat_event(self, user, line):
-        return (user, self.antishout(line))
+        return user, self.antishout(line)
 
     def incoming_public_chat_event(self, room, user, line):
-        return (room, user, self.antishout(line))
+        return room, user, self.antishout(line)
 
     def antishout(self, line):
 
@@ -70,8 +70,8 @@ class Plugin(BasePlugin):
 
         newline = line
 
-        if len(line) > self.settings['minlength'] and (score == -1 or score > self.settings['maxscore']):
-            newline = '. '.join([self.capitalize(x) for x in line.split('. ')])
+        if len(line) > self.settings["minlength"] and (score == -1 or score > self.settings["maxscore"]):
+            newline = ". ".join([self.capitalize(x) for x in line.split(". ")])
 
         if newline == line:
             return newline
