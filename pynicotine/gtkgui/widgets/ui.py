@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2023 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -17,57 +17,83 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import sys
 
 from gi.repository import Gtk
 
-from pynicotine.logfacility import log
+from pynicotine.gtkgui.application import GTK_API_VERSION
+from pynicotine.gtkgui.application import GTK_GUI_FOLDER_PATH
+from pynicotine.gtkgui.application import GTK_MINOR_VERSION
+from pynicotine.utils import encode_path
 
 
-""" UI Builder """
+# UI Builder #
 
 
-GUI_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+ui_data = {}
 
 
-class UserInterface:
+def load(scope, path):
 
-    def __init__(self, filename):
+    if path not in ui_data:
+        with open(encode_path(os.path.join(GTK_GUI_FOLDER_PATH, "ui", path)), encoding="utf-8") as file_handle:
+            ui_content = file_handle.read()
 
+            # Translate UI strings using Python's gettext
+            start_tag = ' translatable="yes">'
+            end_tag = "</property>"
+            start_tag_len = len(start_tag)
+            tag_start_pos = ui_content.find(start_tag)
+
+            while tag_start_pos > -1:
+                string_start_pos = (tag_start_pos + start_tag_len)
+                string_end_pos = ui_content.find(end_tag, string_start_pos)
+
+                original_string = ui_content[string_start_pos:string_end_pos]
+                translated_string = _(original_string)
+
+                if original_string != translated_string:
+                    ui_content = ui_content[:string_start_pos] + translated_string + ui_content[string_end_pos:]
+
+                # Find next translatable string
+                new_string_end_pos = (string_end_pos + (len(translated_string) - len(original_string)))
+                tag_start_pos = ui_content.find(start_tag, new_string_end_pos)
+
+            # GTK 4 replacements
+            if GTK_API_VERSION >= 4:
+                ui_content = (
+                    ui_content
+                    .replace("GtkRadioButton", "GtkCheckButton")
+                    .replace('"can-focus"', '"focusable"'))
+
+                if GTK_MINOR_VERSION >= 10:
+                    ui_content = (
+                        ui_content
+                        .replace("GtkColorButton", "GtkColorDialogButton")
+                        .replace("GtkFontButton", "GtkFontDialogButton"))
+
+            ui_data[path] = ui_content
+
+    if GTK_API_VERSION >= 4:
+        builder = Gtk.Builder(scope)
+        builder.add_from_string(ui_data[path])
+        Gtk.Buildable.get_name = Gtk.Buildable.get_buildable_id  # pylint: disable=no-member
+    else:
+        builder = Gtk.Builder()
+        builder.add_from_string(ui_data[path])
+        builder.connect_signals(scope)                      # pylint: disable=no-member
+
+    widgets = builder.get_objects()
+
+    for obj in list(widgets):
         try:
-            filename = os.path.join(GUI_DIR, filename)
+            obj_name = Gtk.Buildable.get_name(obj)
+            if not obj_name.startswith("_"):
+                continue
 
-            with open(filename, "r", encoding="utf-8") as f:
-                if Gtk.get_major_version() == 4:
-                    builder = Gtk.Builder(self)
-                    builder.add_from_string(
-                        f.read()
-                        .replace("GtkEventBox", "GtkBox")
-                        .replace("GtkRadioButton", "GtkCheckButton")
-                    )
-                    Gtk.Buildable.get_name = Gtk.Buildable.get_buildable_id
-                else:
-                    builder = Gtk.Builder()
-                    builder.add_from_string(
-                        f.read()
-                        .replace("<property name=\"focusable\">0</property>",
-                                 "<property name=\"can-focus\">0</property>")
-                    )
-                    builder.connect_signals(self)
+        except TypeError:
+            pass
 
-            for obj in builder.get_objects():
-                try:
-                    obj_name = Gtk.Buildable.get_name(obj)
+        widgets.remove(obj)
 
-                    if not obj_name.startswith("_"):
-                        setattr(self, obj_name, obj)
-
-                except TypeError:
-                    pass
-
-        except Exception as e:
-            log.add(_("Failed to load ui file %(file)s: %(error)s"), {
-                "file": filename,
-                "error": e
-            })
-            sys.exit()
+    widgets.sort(key=Gtk.Buildable.get_name)
+    return widgets

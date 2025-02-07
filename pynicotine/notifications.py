@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -16,117 +16,78 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import threading
+from collections import deque
+from threading import Thread
 
+from pynicotine.config import config
+from pynicotine.events import events
 from pynicotine.logfacility import log
 from pynicotine.utils import execute_command
 
 
 class Notifications:
+    __slots__ = ("tts", "_tts_thread")
 
-    def __init__(self, config, ui_callback=None):
+    def __init__(self):
 
-        self.config = config
-        self.ui_callback = None
+        self.tts = deque()
+        self._tts_thread = None
 
-        self.chat_hilites = {
-            "rooms": [],
-            "private": []
-        }
+        events.connect("quit", self._quit)
 
-        self.tts = []
-        self.tts_playing = False
-        self.continue_playing = False
+    def _quit(self):
+        self.tts.clear()
 
-        if hasattr(ui_callback, "notifications"):
-            self.ui_callback = ui_callback.notifications
+    # Notification Messages #
 
-    """ Chat Hilites """
+    def show_notification(self, message, title=None):
+        events.emit("show-notification", message, title=title)
 
-    def add_hilite_item(self, location, item):
+    def show_chatroom_notification(self, room, message, title=None, high_priority=False):
+        events.emit("show-chatroom-notification", room, message, title=title, high_priority=high_priority)
 
-        if not item or item in self.chat_hilites[location]:
-            return False
+    def show_download_notification(self, message, title=None, high_priority=False):
+        events.emit("show-download-notification", message, title=title, high_priority=high_priority)
 
-        self.chat_hilites[location].append(item)
-        return True
+    def show_private_chat_notification(self, username, message, title=None):
+        events.emit("show-private-chat-notification", username, message, title=title)
 
-    def remove_hilite_item(self, location, item):
+    def show_search_notification(self, search_token, message, title=None):
+        events.emit("show-search-notification", search_token, message, title=title)
 
-        if item not in self.chat_hilites[location]:
-            return False
-
-        self.chat_hilites[location].remove(item)
-        return True
-
-    """ Text Notification """
-
-    def new_text_notification(self, message, title=None):
-
-        if self.ui_callback:
-            self.ui_callback.new_text_notification(message, title)
-            return
-
-        if title:
-            message = "%s: %s" % (title, message)
-
-        log.add(message)
-
-    """ TTS """
+    # TTS #
 
     def new_tts(self, message, args=None):
 
-        if not self.config.sections["ui"]["speechenabled"]:
-            return
-
-        if message in self.tts:
+        if not config.sections["ui"]["speechenabled"]:
             return
 
         if args:
             for key, value in args.items():
-                args[key] = self.tts_clean_message(value)
+                args[key] = (value.replace("_", " ").replace("[", " ").replace("]", " ")
+                                  .replace("(", " ").replace(")", " "))
 
-            message = message % args
+            try:
+                message %= args
+
+            except Exception as error:
+                log.add(_("Text-to-speech for message failed: %s"), error)
+                return
 
         self.tts.append(message)
 
-        if self.tts_playing:
-            # Avoid spinning up useless threads
-            self.continue_playing = True
+        if self._tts_thread and self._tts_thread.is_alive():
             return
 
-        thread = threading.Thread(target=self.play_tts)
-        thread.name = "TTS"
-        thread.daemon = True
-        thread.start()
+        self._tts_thread = Thread(target=self.play_tts, name="TTS", daemon=True)
+        self._tts_thread.start()
 
     def play_tts(self):
 
-        for message in self.tts[:]:
-            self.tts_player(message)
+        while self.tts:
+            try:
+                message = self.tts.popleft()
+                execute_command(config.sections["ui"]["speechcommand"], message, background=False, hidden=True)
 
-            if message in self.tts:
-                self.tts.remove(message)
-
-        self.tts_playing = False
-        if self.continue_playing:
-            self.continue_playing = False
-            self.play_tts()
-
-    @staticmethod
-    def tts_clean_message(message):
-
-        for i in ["_", "[", "]", "(", ")"]:
-            message = message.replace(i, " ")
-
-        return message
-
-    def tts_player(self, message):
-
-        self.tts_playing = True
-
-        try:
-            execute_command(self.config.sections["ui"]["speechcommand"], message, background=False)
-
-        except Exception as error:
-            log.add(_("Text-to-speech for message failed: %s"), str(error))
+            except Exception as error:
+                log.add(_("Text-to-speech for message failed: %s"), error)

@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2025 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -16,18 +16,39 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import importlib.util
+__application_name__ = "Nicotine+"
+__application_id__ = "org.nicotine_plus.Nicotine"
+__version__ = "3.3.8rc2"
+__author__ = "Nicotine+ Team"
+__copyright__ = """© 2004–2025 Nicotine+ Contributors
+© 2003–2004 Nicotine Contributors
+© 2001–2003 PySoulSeek Contributors"""
+__website_url__ = "https://nicotine-plus.org"
+__privileges_url__ = "https://www.slsknet.org/qtlogin.php?username=%s"
+__port_checker_url__ = "https://www.slsknet.org/porttest.php?port=%s"
+__issue_tracker_url__ = "https://github.com/nicotine-plus/nicotine-plus/issues"
+__translations_url__ = "https://nicotine-plus.org/doc/TRANSLATIONS"
+
+import io
+import os
 import sys
 
-from pynicotine.i18n import apply_translation
+from pynicotine.config import config
+from pynicotine.core import core
+from pynicotine.i18n import LOCALE_PATH
+from pynicotine.i18n import apply_translations
+from pynicotine.logfacility import log
 
 
 def check_arguments():
-    """ Parse command line arguments specified by the user """
+    """Parse command line arguments specified by the user."""
 
     import argparse
-    from pynicotine.config import config
-    parser = argparse.ArgumentParser(description=_("Nicotine+ is a Soulseek client"), add_help=False)
+
+    parser = argparse.ArgumentParser(
+        prog="nicotine", description=_("Graphical client for the Soulseek peer-to-peer network"),
+        epilog=_("Website: %s") % __website_url__, add_help=False
+    )
 
     # Visible arguments
     parser.add_argument(
@@ -40,19 +61,7 @@ def check_arguments():
     )
     parser.add_argument(
         "-u", "--user-data", metavar=_("dir"),
-        help=_("use non-default user data directory for e.g. list of downloads")
-    )
-    parser.add_argument(
-        "-p", "--plugins", metavar=_("dir"),
-        help=_("use non-default directory for plugins")
-    )
-    parser.add_argument(
-        "-t", "--enable-trayicon", action="store_true",
-        help=_("enable the tray icon")
-    )
-    parser.add_argument(
-        "-d", "--disable-trayicon", action="store_true",
-        help=_("disable the tray icon")
+        help=_("alternative directory for user data and plugins")
     )
     parser.add_argument(
         "-s", "--hidden", action="store_true",
@@ -75,142 +84,136 @@ def check_arguments():
         help=_("start the program in headless mode (no GUI)")
     )
     parser.add_argument(
-        "-v", "--version", action="version", version="Nicotine+ %s" % config.version,
+        "-v", "--version", action="version", version=f"{__application_name__} {__version__}",
         help=_("display version and exit")
     )
 
     # Disables critical error dialog; used for integration tests
     parser.add_argument("--ci-mode", action="store_true", help=argparse.SUPPRESS)
 
+    # Disables features that require external applications, useful for e.g. Docker containers
+    parser.add_argument("--isolated", action="store_true", help=argparse.SUPPRESS)
+
     args = parser.parse_args()
-    trayicon = None
     multi_instance = False
 
     if args.config:
-        config.filename = args.config
+        config.set_config_file(args.config)
 
-        # Since a custom config was specified, allow another instance of Nicotine+ to open
+        # Since a custom config was specified, allow another instance of the application to open
         multi_instance = True
 
     if args.user_data:
-        config.data_dir = args.user_data
+        config.set_data_folder(args.user_data)
 
-    if args.plugins:
-        config.plugin_dir = args.plugins
+    core.cli_interface_address = args.bindip
+    core.cli_listen_port = args.port
 
-    if args.enable_trayicon:
-        trayicon = True
-
-    if args.disable_trayicon:
-        trayicon = False
-
-    return trayicon, args.headless, args.hidden, args.bindip, args.port, args.ci_mode, args.rescan, multi_instance
+    return args.headless, args.hidden, args.ci_mode, args.isolated, args.rescan, multi_instance
 
 
-def check_core_dependencies():
+def check_python_version():
 
-    # Require Python >= 3.5
-    try:
-        assert sys.version_info[:2] >= (3, 5), '.'.join(
-            map(str, sys.version_info[:3])
-        )
+    # Require minimum Python version
+    python_version = (3, 6)
 
-    except AssertionError as error:
+    if sys.version_info < python_version:
         return _("""You are using an unsupported version of Python (%(old_version)s).
 You should install Python %(min_version)s or newer.""") % {
-            "old_version": error,
-            "min_version": "3.5"
-        }
-
-    # Require gdbm or semidbm, for faster loading of shelves
-    if not importlib.util.find_spec("_gdbm") and \
-            not importlib.util.find_spec("semidbm"):
-        return _("Cannot find %(option1)s or %(option2)s, please install either one.") % {
-            "option1": "gdbm",
-            "option2": "semidbm"
+            "old_version": ".".join(str(x) for x in sys.version_info[:3]),
+            "min_version": ".".join(str(x) for x in python_version)
         }
 
     return None
 
 
+def set_up_python():
+
+    is_frozen = getattr(sys, "frozen", False)
+
+    # Always use UTF-8 for print()
+    if sys.stdout is not None:
+        sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding="utf-8", line_buffering=True)
+
+    if is_frozen:
+        import multiprocessing
+
+        # Set up paths for frozen binaries (Windows and macOS)
+        executable_folder = os.path.dirname(sys.executable)
+        os.environ["SSL_CERT_FILE"] = os.path.join(executable_folder, "lib/cert.pem")
+
+        # Support file scanning process in frozen binaries
+        multiprocessing.freeze_support()
+
+        # Prioritize dlls in the 'lib' subfolder over system dlls, to avoid issues with conflicting dlls
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.kernel32.SetDllDirectoryW(os.path.join(executable_folder, "lib"))
+
+
+def rename_process(new_name, debug_info=False):
+
+    errors = []
+
+    # Renaming ourselves for pkill et al.
+    try:
+        import ctypes
+        # GNU/Linux style
+        libc = ctypes.CDLL(None)
+        libc.prctl(15, new_name, 0, 0, 0)
+
+    except Exception as error:
+        errors.append(error)
+        errors.append("Failed GNU/Linux style")
+
+        try:
+            import ctypes
+            # BSD style
+            libc = ctypes.CDLL(None)
+            libc.setproctitle(new_name)
+
+        except Exception as second_error:
+            errors.append(second_error)
+            errors.append("Failed BSD style")
+
+    if debug_info and errors:
+        msg = ["Errors occurred while trying to change process name:"]
+        for i in errors:
+            msg.append(str(i))
+        log.add("\n".join(msg))
+
+
 def rescan_shares():
 
-    from collections import deque
+    exit_code = 0
 
-    from pynicotine.config import config
-    from pynicotine.shares import Shares
+    if not core.shares.rescan_shares(use_thread=False):
+        log.add("--------------------------------------------------")
+        log.add(_("Failed to scan shares. Please close other Nicotine+ instances and try again."))
 
-    config.load_config()
+        exit_code = 1
 
-    shares = Shares(None, config, deque())
-    error = shares.rescan_public_shares(thread=False)
-
-    if config.sections["transfers"]["enablebuddyshares"]:
-        error = shares.rescan_buddy_shares(thread=False)
-
-    if error:
-        print("--------------------------------------------------")
-        print(_("Failed to scan shares. Please close other Nicotine+ instances and try again."))
-        return 1
-
-    return 0
-
-
-def run_headless(core, ci_mode):
-    """ Run Nicotine+ in headless (no GUI) mode """
-
-    import time
-
-    from pynicotine.config import config
-    from pynicotine.logfacility import log
-
-    config.load_config()
-    log.log_levels = set(["download", "upload"] + config.sections["logging"]["debugmodes"])
-
-    connect_ready = core.start()
-
-    if not connect_ready and not ci_mode:
-        return 1
-
-    connect_success = core.connect()
-
-    if not connect_success and not ci_mode:
-        return 1
-
-    while not core.shutdown:
-        time.sleep(0.2)
-
-    config.write_configuration()
-    return 0
+    core.quit()
+    return exit_code
 
 
 def run():
-    """ Run Nicotine+ and return its exit code """
+    """Run application and return its exit code."""
 
-    # Support file scanning process in frozen Windows and macOS binaries
-    if getattr(sys, 'frozen', False):
-        import multiprocessing
-        multiprocessing.freeze_support()
+    set_up_python()
+    rename_process(b"nicotine")
 
-    # Require pynicotine module
-    if not importlib.util.find_spec("pynicotine"):
-        print("""Cannot find Nicotine+ modules.
-Perhaps they're installed in a directory which is not
-in an interpreter's module search path.
-(there could be a version mismatch between
-what version of Python was used to build the Nicotine
-binary package and what you try to run Nicotine+ with).""")
-        return 1
-
-    from pynicotine.utils import rename_process
-    rename_process(b'nicotine')
-
-    trayicon, headless, hidden, bindip, port, ci_mode, rescan, multi_instance = check_arguments()
-    error = check_core_dependencies()
+    headless, hidden, ci_mode, isolated_mode, rescan, multi_instance = check_arguments()
+    error = check_python_version()
 
     if error:
         print(error)
         return 1
+
+    core.init_components(
+        enabled_components={"cli", "shares"} if rescan else None,
+        isolated_mode=isolated_mode
+    )
 
     # Dump tracebacks for C modules (in addition to pure Python code)
     try:
@@ -218,22 +221,25 @@ binary package and what you try to run Nicotine+ with).""")
         faulthandler.enable()
 
     except Exception as error:
-        print("Faulthandler module could not be enabled. Error: %s" % error)
+        log.add(f"Faulthandler module could not be enabled. Error: {error}")
+
+    if not os.path.isdir(LOCALE_PATH):
+        log.add("Translation files (.mo) are unavailable, using default English strings")
 
     if rescan:
         return rescan_shares()
 
-    # Initialize core
-    from pynicotine.pynicotine import NicotineCore
-    core = NicotineCore(bindip, port)
+    # Initialize GTK-based GUI
+    if not headless:
+        from pynicotine import gtkgui as application
+        exit_code = application.run(hidden, ci_mode, isolated_mode, multi_instance)
+
+        if exit_code is not None:
+            return exit_code
 
     # Run without a GUI
-    if headless:
-        return run_headless(core, ci_mode)
-
-    # Initialize GTK-based GUI
-    from pynicotine.gtkgui import run_gui
-    return run_gui(core, trayicon, hidden, bindip, port, ci_mode, multi_instance)
+    from pynicotine import headless as application
+    return application.run()
 
 
-apply_translation()
+apply_translations()

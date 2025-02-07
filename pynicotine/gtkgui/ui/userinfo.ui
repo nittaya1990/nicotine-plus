@@ -1,478 +1,408 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-  <object class="GtkBox" id="Main">
-    <property name="visible">1</property>
+  <requires lib="gtk+" version="3.0"/>
+  <object class="GtkButton" id="retry_button">
+    <property name="label" translatable="yes">Retry</property>
+    <property name="valign">center</property>
+    <property name="visible">True</property>
+    <signal name="clicked" handler="on_refresh"/>
+  </object>
+  <object class="GtkBox" id="container">
+    <property name="visible">True</property>
     <child>
-      <object class="GtkBox">
-        <property name="visible">0</property>
-        <property name="orientation">vertical</property>
-        <child>
-          <object class="GtkRevealer">
-            <property name="visible">1</property>
-            <property name="transition-type">slide-down</property>
-            <child>
-              <object class="GtkInfoBar" id="InfoBar">
-                <property name="visible">1</property>
-              </object>
-            </child>
-          </object>
-        </child>
+      <object class="GtkOverlay">
+        <property name="visible">True</property>
         <child>
           <object class="GtkBox">
-            <property name="visible">1</property>
-            <property name="vexpand">1</property>
+            <property name="hexpand">True</property>
+            <property name="orientation">vertical</property>
+            <property name="visible">True</property>
             <child>
-              <object class="GtkPaned" id="MainPaned">
-                <property name="visible">1</property>
-                <property name="hexpand">1</property>
-                <child>
-                  <object class="GtkBox" id="InfoVbox">
-                    <property name="visible">1</property>
-                    <property name="spacing">18</property>
-                    <property name="width-request">300</property>
-                    <property name="orientation">vertical</property>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">18</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="xalign">0</property>
-                            <property name="margin-start">12</property>
-                            <property name="margin-end">12</property>
-                            <property name="margin-top">12</property>
-                            <property name="label" translatable="yes">User Description</property>
-                            <attributes>
-                              <attribute name="weight" value="bold"/>
-                            </attributes>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <child>
-                              <object class="GtkScrolledWindow">
-                                <property name="visible">1</property>
-                                <property name="vexpand">1</property>
-                                <child>
-                                  <object class="GtkTextView" id="descr">
-                                    <property name="visible">1</property>
-                                    <property name="hexpand">1</property>
-                                    <property name="editable">0</property>
-                                    <property name="wrap-mode">word</property>
-                                    <property name="cursor-visible">0</property>
-                                    <property name="pixels-above-lines">1</property>
-                                    <property name="pixels-below-lines">1</property>
-                                    <property name="left-margin">12</property>
-                                    <property name="right-margin">12</property>
-                                    <property name="bottom-margin">6</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="margin-start">12</property>
-                        <property name="margin-end">12</property>
-                        <property name="margin-bottom">12</property>
-                        <property name="spacing">18</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="xalign">0</property>
-                            <property name="label" translatable="yes">User Information</property>
-                            <attributes>
-                              <attribute name="weight" value="bold"/>
-                            </attributes>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkFlowBox">
-                            <property name="visible">1</property>
-                            <property name="row-spacing">12</property>
-                            <property name="column-spacing">12</property>
-                            <property name="min-children-per-line">2</property>
-                            <property name="max-children-per-line">2</property>
-                            <property name="selection-mode">none</property>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Upload Slots</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">uploads</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="uploads">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Free Upload Slots</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">slotsavail</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="slotsavail">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Queued Uploads</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">queuesize</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="queuesize">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Upload Speed</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">speed</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="speed">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Shared Files</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">filesshared</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="filesshared">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Shared Folders</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">dirsshared</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="dirsshared">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Country</property>
-                                    <property name="xalign">0</property>
-                                    <property name="mnemonic_widget">country</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBoxChild">
-                                <property name="visible">1</property>
-                                <property name="focusable">0</property>
-                                <child>
-                                  <object class="GtkLabel" id="country">
-                                    <property name="visible">1</property>
-                                    <property name="label" translatable="yes">Unknown</property>
-                                    <property name="selectable">1</property>
-                                    <property name="wrap">1</property>
-                                    <property name="xalign">0</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkProgressBar" id="progressbar">
-                            <property name="visible">1</property>
-                            <property name="pulse-step">0.10000000149</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkPaned" id="SecondPaned">
-                    <property name="visible">1</property>
-                    <child>
-                      <object class="GtkBox" id="Interests">
-                        <property name="width-request">300</property>
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="xalign">0</property>
-                            <property name="margin-start">12</property>
-                            <property name="margin-end">12</property>
-                            <property name="margin-top">12</property>
-                            <property name="margin-bottom">12</property>
-                            <property name="label" translatable="yes">User Interests</property>
-                            <attributes>
-                              <attribute name="weight" value="bold"/>
-                            </attributes>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <child>
-                              <object class="GtkScrolledWindow">
-                                <property name="visible">1</property>
-                                <property name="vexpand">1</property>
-                                <child>
-                                  <object class="GtkTreeView" id="Likes">
-                                    <property name="visible">1</property>
-                                    <property name="hexpand">1</property>
-                                    <child internal-child="selection">
-                                      <object class="GtkTreeSelection"/>
-                                    </child>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <child>
-                              <object class="GtkScrolledWindow">
-                                <property name="visible">1</property>
-                                <property name="vexpand">1</property>
-                                <child>
-                                  <object class="GtkTreeView" id="Hates">
-                                    <property name="visible">1</property>
-                                    <property name="hexpand">1</property>
-                                    <child internal-child="selection">
-                                      <object class="GtkTreeSelection"/>
-                                    </child>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkEventBox" id="ImageContainer">
-                        <property name="visible">1</property>
-                        <child>
-                          <object class="GtkBox">
-                            <property name="visible">1</property>
-                            <property name="orientation">vertical</property>
-                            <property name="hexpand">1</property>
-                            <property name="spacing">6</property>
-                            <child>
-                              <object class="GtkLabel">
-                                <property name="visible">1</property>
-                                <property name="xalign">0</property>
-                                <property name="margin-start">12</property>
-                                <property name="margin-end">12</property>
-                                <property name="margin-top">12</property>
-                                <property name="margin-bottom">12</property>
-                                <property name="label" translatable="yes">User Picture</property>
-                                <attributes>
-                                  <attribute name="weight" value="bold"/>
-                                </attributes>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkScrolledWindow">
-                                <property name="visible">1</property>
-                                <property name="vexpand">1</property>
-                                <child>
-                                  <object class="GtkViewport" id="ImageViewport">
-                                    <property name="visible">1</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
+              <object class="GtkBox" id="info_bar_container">
+                <property name="visible">True</property>
               </object>
             </child>
             <child>
               <object class="GtkBox">
-                <property name="visible">1</property>
-                <property name="margin-start">12</property>
-                <property name="margin-end">12</property>
-                <property name="margin-top">12</property>
-                <property name="margin-bottom">12</property>
-                <property name="spacing">6</property>
-                <property name="orientation">vertical</property>
+                <property name="spacing">1</property>
+                <property name="vexpand">True</property>
+                <property name="visible">True</property>
                 <child>
-                  <object class="GtkButton">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_send_message" swapped="no"/>
+                  <object class="GtkBox" id="user_info_container">
+                    <property name="hexpand">True</property>
+                    <property name="orientation">vertical</property>
+                    <property name="visible">True</property>
+                    <property name="width-request">185</property>
                     <child>
                       <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
+                        <property name="orientation">vertical</property>
+                        <property name="visible">True</property>
                         <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">mail-send-symbolic</property>
+                          <object class="GtkBox">
+                            <property name="margin-bottom">6</property>
+                            <property name="margin-end">6</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-top">6</property>
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="hexpand">True</property>
+                                <property name="spacing">9</property>
+                                <property name="visible">True</property>
+                                <child>
+                                  <object class="GtkLabel" id="user_label">
+                                    <property name="ellipsize">end</property>
+                                    <property name="margin-bottom">6</property>
+                                    <property name="margin-top">6</property>
+                                    <property name="selectable">True</property>
+                                    <property name="single-line-mode">True</property>
+                                    <property name="tooltip-text" bind-source="user_label" bind-property="label" bind-flags="bidirectional|sync-create"/>
+                                    <property name="visible">True</property>
+                                    <property name="xalign">0</property>
+                                    <style>
+                                      <class name="title-2"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton" id="country_button">
+                                    <property name="visible">False</property>
+                                    <signal name="clicked" handler="on_show_ip_address"/>
+                                    <child>
+                                      <object class="GtkBox">
+                                        <property name="spacing">8</property>
+                                        <property name="visible">True</property>
+                                        <child>
+                                          <object class="GtkImage" id="country_icon">
+                                            <property name="can-focus">True</property>
+                                            <property name="visible">True</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkLabel" id="country_label">
+                                            <property name="ellipsize">end</property>
+                                            <property name="mnemonic-widget">country_button</property>
+                                            <property name="visible">True</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <style>
+                                      <class name="circular"/>
+                                      <class name="count"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="edit_profile_button">
+                                <property name="tooltip-text" translatable="yes">Edit Profile</property>
+                                <property name="visible">True</property>
+                                <signal name="clicked" handler="on_edit_profile"/>
+                                <child>
+                                  <object class="GtkImage">
+                                    <property name="icon-name">document-edit-symbolic</property>
+                                    <property name="visible">True</property>
+                                  </object>
+                                </child>
+                                <style>
+                                  <class name="circular"/>
+                                  <class name="image-button"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="vexpand">True</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkScrolledWindow" id="description_view_container">
+                            <property name="hexpand">True</property>
+                            <property name="visible">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="margin-bottom">14</property>
+                        <property name="margin-end">12</property>
+                        <property name="margin-start">12</property>
+                        <property name="margin-top">12</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">12</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">24</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="hexpand">True</property>
+                                <property name="label" translatable="yes">Shared Files</property>
+                                <property name="mnemonic-widget">shared_files_label</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="shared_files_label">
+                                <property name="label" translatable="yes">Unknown</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <child>
+                          <object class="GtkBox">
+                            <property name="spacing">24</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="hexpand">True</property>
+                                <property name="label" translatable="yes">Shared Folders</property>
+                                <property name="mnemonic-widget">shared_folders_label</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="shared_folders_label">
+                                <property name="label" translatable="yes">Unknown</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">24</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="hexpand">True</property>
+                                <property name="label" translatable="yes">Upload Speed</property>
+                                <property name="mnemonic-widget">upload_speed_label</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="upload_speed_label">
+                                <property name="label" translatable="yes">Unknown</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">24</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="hexpand">True</property>
+                                <property name="label" translatable="yes">Free Upload Slots</property>
+                                <property name="mnemonic-widget">free_upload_slots_label</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="free_upload_slots_label">
+                                <property name="label" translatable="yes">Unknown</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">24</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="hexpand">True</property>
+                                <property name="label" translatable="yes">Upload Slots</property>
+                                <property name="mnemonic-widget">upload_slots_label</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="upload_slots_label">
+                                <property name="label" translatable="yes">Unknown</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">24</property>
+                            <property name="visible">False</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="hexpand">True</property>
+                                <property name="label" translatable="yes">Queued Uploads</property>
+                                <property name="mnemonic-widget">queued_uploads_label</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="queued_uploads_label">
+                                <property name="label" translatable="yes">Unknown</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkRevealer">
+                        <property name="reveal-child">False</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkEntry">
+                            <property name="max-width-chars">40</property>
+                            <property name="visible">True</property>
+                            <property name="width-chars">0</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <style>
+                      <class name="border-end"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox" id="interests_container">
+                    <property name="hexpand">True</property>
+                    <property name="orientation">vertical</property>
+                    <property name="visible">True</property>
+                    <property name="width-request">125</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="margin-bottom">6</property>
+                        <property name="margin-end">6</property>
+                        <property name="margin-start">6</property>
+                        <property name="margin-top">6</property>
+                        <property name="spacing">12</property>
+                        <property name="visible">True</property>
+                        <child>
                           <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">Send M_essage</property>
-                            <property name="use-underline">1</property>
+                            <property name="ellipsize">end</property>
+                            <property name="hexpand">True</property>
+                            <property name="label" translatable="yes">Interests</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="margin-start">6</property>
+                            <property name="margin-top">6</property>
+                            <property name="visible">True</property>
+                            <property name="width-chars">6</property>
+                            <property name="xalign">0</property>
+                            <style>
+                              <class name="heading"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="edit_interests_button">
+                            <property name="tooltip-text" translatable="yes">Edit Interests</property>
+                            <property name="visible">True</property>
+                            <signal name="clicked" handler="on_edit_interests"/>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">document-edit-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <style>
+                              <class name="circular"/>
+                              <class name="image-button"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="vexpand">True</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkScrolledWindow" id="likes_list_container">
+                            <property name="hexpand">True</property>
+                            <property name="visible">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="margin-top">18</property>
+                        <property name="vexpand">True</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkScrolledWindow" id="dislikes_list_container">
+                            <property name="hexpand">True</property>
+                            <property name="visible">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkRevealer">
+                        <property name="reveal-child">False</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkEntry">
+                            <property name="max-width-chars">35</property>
+                            <property name="visible">True</property>
+                            <property name="width-chars">0</property>
                           </object>
                         </child>
                       </object>
@@ -480,185 +410,279 @@
                   </object>
                 </child>
                 <child>
-                  <object class="GtkButton">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_browse_user" swapped="no"/>
+                  <object class="GtkBox" id="picture_view">
+                    <property name="hexpand">False</property>
+                    <property name="margin-bottom">36</property>
+                    <property name="margin-end">6</property>
+                    <property name="margin-start">24</property>
+                    <property name="margin-top">36</property>
+                    <property name="visible">True</property>
+                    <property name="width-request">104</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox">
+                    <property name="margin-bottom">6</property>
+                    <property name="margin-end">6</property>
+                    <property name="margin-start">6</property>
+                    <property name="margin-top">6</property>
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">4</property>
+                    <property name="visible">True</property>
                     <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
+                      <object class="GtkButton" id="_send_message_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_send_message"/>
                         <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">folder-symbolic</property>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">mail-unread-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="label" translatable="yes">_Send Message</property>
+                                <property name="mnemonic-widget">_send_message_button</property>
+                                <property name="use-underline">True</property>
+                                <property name="visible">True</property>
+                                <property name="width-chars">8</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
                           </object>
                         </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="_browse_files_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_browse_user"/>
                         <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">_Browse Files</property>
-                            <property name="use-underline">1</property>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">folder-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="label" translatable="yes">_Browse Files</property>
+                                <property name="mnemonic-widget">_browse_files_button</property>
+                                <property name="use-underline">True</property>
+                                <property name="visible">True</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
                           </object>
                         </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="_add_remove_buddy_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_add_remove_buddy"/>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">system-users-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="add_remove_buddy_label">
+                                <property name="ellipsize">end</property>
+                                <property name="mnemonic-widget">_add_remove_buddy_button</property>
+                                <property name="use-underline">True</property>
+                                <property name="visible">True</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="ban_unban_user_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_ban_unban_user"/>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">action-unavailable-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="ban_unban_user_label">
+                                <property name="ellipsize">end</property>
+                                <property name="mnemonic-widget">ban_unban_user_button</property>
+                                <property name="visible">True</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="ignore_unignore_user_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_ignore_unignore_user"/>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">microphone-sensitivity-muted-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="ignore_unignore_user_label">
+                                <property name="ellipsize">end</property>
+                                <property name="mnemonic-widget">ignore_unignore_user_button</property>
+                                <property name="visible">True</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="gift_privileges_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_give_privileges"/>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">starred-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="label" translatable="yes">_Gift Privileges…</property>
+                                <property name="mnemonic-widget">gift_privileges_button</property>
+                                <property name="use-underline">True</property>
+                                <property name="visible">True</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="vexpand">True</property>
+                        <property name="visible">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="refresh_button">
+                        <property name="visible">True</property>
+                        <signal name="clicked" handler="on_refresh"/>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">6</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">view-refresh-symbolic</property>
+                                <property name="visible">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="ellipsize">end</property>
+                                <property name="label" translatable="yes">_Refresh Profile</property>
+                                <property name="mnemonic-widget">refresh_button</property>
+                                <property name="use-underline">True</property>
+                                <property name="visible">True</property>
+                                <style>
+                                  <class name="normal"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <style>
+                          <class name="flat"/>
+                        </style>
                       </object>
                     </child>
                   </object>
                 </child>
-                <child>
-                  <object class="GtkButton">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_show_ip_address" swapped="no"/>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">network-wired-symbolic</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">Show IP A_ddress</property>
-                            <property name="use-underline">1</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="AddToList">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_add_to_list" swapped="no"/>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">contact-new-symbolic</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">_Add to Buddy List</property>
-                            <property name="use-underline">1</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="BanUser">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_ban_user" swapped="no"/>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">action-unavailable-symbolic</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">Ban User</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="IgnoreUser">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_ignore_user" swapped="no"/>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">dialog-error-symbolic</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">Ignore User</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="SavePicture">
-                    <property name="visible">1</property>
-                    <property name="sensitive">0</property>
-                    <signal name="clicked" handler="on_save_picture" swapped="no"/>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">image-x-generic-symbolic</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">Save _Picture</property>
-                            <property name="use-underline">1</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkLabel" id="Filler">
-                    <property name="visible">1</property>
-                    <property name="vexpand">1</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="RefreshUserinfo">
-                    <property name="visible">1</property>
-                    <signal name="clicked" handler="on_refresh" swapped="no"/>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="visible">1</property>
-                        <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="visible">1</property>
-                            <property name="icon-name">view-refresh-symbolic</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="visible">1</property>
-                            <property name="label" translatable="yes">_Refresh Info</property>
-                            <property name="use-underline">1</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="GtkRevealer">
+            <property name="reveal-child">True</property>
+            <property name="transition-type">slide-up</property>
+            <property name="valign">end</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkProgressBar" id="progress_bar">
+                <property name="pulse-step">0.72</property>
+                <property name="visible">True</property>
+                <signal name="map" handler="on_show_progress_bar"/>
+                <signal name="unmap" handler="on_hide_progress_bar"/>
+                <style>
+                  <class name="osd"/>
+                </style>
               </object>
             </child>
           </object>

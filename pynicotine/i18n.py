@@ -1,4 +1,4 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2025 Nicotine+ Contributors
 #
 # GNU GENERAL PUBLIC LICENSE
 #    Version 3, 29 June 2007
@@ -18,56 +18,91 @@
 
 import gettext
 import locale
+import os
 import sys
 
+CURRENT_PATH = os.path.dirname(os.path.realpath(__file__))
+BASE_PATH = os.path.normpath(os.path.join(CURRENT_PATH, ".."))
+LOCALE_PATH = os.path.join(CURRENT_PATH, "locale")
+TRANSLATION_DOMAIN = "nicotine"
+LANGUAGES = (
+    ("ca", "Català"),
+    ("cs", "Čeština"),
+    ("de", "Deutsch"),
+    ("en", "English"),
+    ("es_CL", "Español (Chile)"),
+    ("es_ES", "Español (España)"),
+    ("et", "Eesti"),
+    ("fr", "Français"),
+    ("hu", "Magyar"),
+    ("it", "Italiano"),
+    ("lv", "Latviešu"),
+    ("nl", "Nederlands"),
+    ("pl", "Polski"),
+    ("pt_BR", "Português (Brasil)"),
+    ("pt_PT", "Português (Portugal)"),
+    ("ru", "Русский"),
+    ("ta", "தமிழ்"),
+    ("tr", "Türkçe"),
+    ("uk", "Українська"),
+    ("zh_CN", "汉语")
+)
 
-def apply_translation():
-    """Function dealing with translations and locales.
 
-    We try to autodetect the language and fix the locale.
+def _set_system_language(language=None):
+    """Extracts the default system locale/language and applies it on systems that
+    don't set the 'LC_ALL/LANGUAGE' environment variables by default (Windows,
+    macOS)"""
 
-    If something goes wrong we fall back to no translation.
+    default_locale = None
 
-    This function also try to find translation files in the project path first:
-    $(PROJECT_PATH)/mo/$(LANG)/LC_MESSAGES/nicotine.mo
-
-    If no translations are found we fall back to the system path for locates:
-    /usr/share/locale/$(LANG)/LC_MESSAGES
-
-    Note: To the best of my knowledge when we are in a python venv
-    falling back to the system path does not work."""
-
-    # Load library for translating non-Python content, e.g. GTK ui files
-    if hasattr(locale, 'bindtextdomain') and hasattr(locale, 'textdomain'):
-        libintl = locale
-
-    elif sys.platform == "win32":
+    if sys.platform == "win32":
         import ctypes
-        libintl = ctypes.cdll.LoadLibrary('libintl-8.dll')
+        windll = ctypes.windll.kernel32
 
-    else:
-        libintl = None
+        if not default_locale:
+            default_locale = locale.windows_locale.get(windll.GetUserDefaultLCID())
 
-    # Package name for gettext
-    package = 'nicotine'
+        if not language and "LANGUAGE" not in os.environ:
+            language = locale.windows_locale.get(windll.GetUserDefaultUILanguage())
 
-    # Local path where to find translation (mo) files
-    local_mo_path = 'mo'
+    elif sys.platform == "darwin":
+        import plistlib
+        os_preferences_path = os.path.join(
+            os.path.expanduser("~"), "Library", "Preferences", ".GlobalPreferences.plist")
 
-    if libintl:
-        # Enable translation support in GtkBuilder (ui files)
-        libintl.textdomain(package)
+        try:
+            with open(os_preferences_path, "rb") as file_handle:
+                os_preferences = plistlib.load(file_handle)
 
-    if gettext.find(package, localedir=local_mo_path):
-        if libintl:
-            # Tell GtkBuilder where to find our translations (ui files)
-            libintl.bindtextdomain(package, local_mo_path)
+        except Exception as error:
+            os_preferences = {}
+            print(f"Cannot load global preferences: {error}")
 
-        # Locales are in the current dir, use them
-        gettext.install(package, local_mo_path)
-        return
+        # macOS provides locales with additional @ specifiers, e.g. en_GB@rg=US (region).
+        # Remove them, since they are not supported.
+        default_locale = next(iter(os_preferences.get("AppleLocale", "").split("@", maxsplit=1)))
 
-    # Locales are not in the current dir
-    # We let gettext handle the situation: if found them in the system dir
-    # the app will be translated, if not, it will be untranslated
-    gettext.install(package)
+        if default_locale.endswith("_ES"):
+            # *_ES locale is currently broken on macOS (crashes when sorting strings).
+            # Disable it for now.
+            default_locale = "pt_PT"
+
+        if not language and "LANGUAGE" not in os.environ:
+            languages = os_preferences.get("AppleLanguages", [""])
+            language = next(iter(languages)).replace("-", "_")
+
+    if default_locale:
+        os.environ["LC_ALL"] = default_locale
+
+    if language:
+        os.environ["LANGUAGE"] = language
+
+
+def apply_translations(language=None):
+
+    # Use the same language as the rest of the system
+    _set_system_language(language)
+
+    # Install translations for Python
+    gettext.install(TRANSLATION_DOMAIN, LOCALE_PATH)

@@ -4,97 +4,127 @@
 
 ### Required
 
-- [python](https://www.python.org/) >= 3.5 for interpreter;
-- [pygobject](https://pygobject.readthedocs.io/en/latest/getting_started.html) >= 3.18 for using GObject introspection with Python 3;
-- [gir1.2-gtk-3.0](https://www.gtk.org/) >= 3.18 for GObject introspection bindings for GTK;
-- [gdbm](https://www.gnu.org.ua/software/gdbm/) or [semidbm](https://semidbm.readthedocs.io/en/latest/) for scanning shared files.
+ - [python3](https://www.python.org/) >= 3.6
+      for runtime language;
+ - [gtk4](https://gtk.org/) >= 4.6.9 or [gtk3](https://gtk.org/) >= 3.22.30
+      for graphical interface;
+ - [pygobject](https://pygobject.gnome.org/)
+      for Python bindings for GTK.
 
 ### Recommended
 
-- gir1.2-appindicator3-0.1 or [gir1.2-ayatanaappindicator3-0.1](https://lazka.github.io/pgi-docs/AyatanaAppIndicator3-0.1/index.html) for tray icon;
-- [gir1.2-gspell-1](https://lazka.github.io/pgi-docs/Gspell-1/index.html) for spell checking in chat.
+ - [libadwaita](https://gitlab.gnome.org/GNOME/libadwaita)
+      for Adwaita theme on GNOME (GTK 4);
+ - [gspell](https://gitlab.gnome.org/GNOME/gspell)
+      for spell checking in chat (GTK 3).
 
 ## Building
 
-- [appstream](https://www.freedesktop.org/wiki/Distributions/AppStream/) for generating translations;
-- [gettext](https://www.gnu.org/software/gettext/) for generating translations;
-- [setuptools](https://setuptools.readthedocs.io/en/latest/) for packaging.
+ - [python3-setuptools](https://setuptools.pypa.io/)
+      for build backend;
+ - [python3-build](https://build.pypa.io/)
+      for building;
+ - [python3-wheel](https://wheel.readthedocs.io/)
+      for packaging;
+ - [gettext](https://www.gnu.org/software/gettext/)
+      for generating translations.
 
 ## Testing
 
-- [flake8](https://flake8.pycqa.org/en/latest/) for lint checks;
-- [pylint](https://www.pylint.org/) for lint checks;
-- [pygobject](https://pygobject.readthedocs.io/en/latest/getting_started.html) for integration tests;
-- [gir1.2-gtk-3.0](https://www.gtk.org/) for integration tests.
+ - [pycodestyle](https://pycodestyle.pycqa.org/)
+      for code style checks;
+ - [pylint](https://pylint.readthedocs.io/)
+      for linting.
+
 
 ## Installing Dependencies
 
 ### GNU/Linux
 
-#### Installing Required Runtime Dependencies
+#### Installing Runtime Dependencies
 
-- On Debian/Ubuntu based distributions:
+ - On Debian/Ubuntu-based distributions:
 
-```sh
-sudo apt install gir1.2-gtk-3.0 python3-gi python3-gdbm
-```
+   ```sh
+   sudo apt install gir1.2-gspell-1 gir1.2-gtk-4.0 gir1.2-adw-1 python3-gi python3-gi-cairo
+   ```
 
-- On Redhat/Fedora based distributions:
+ - On Redhat/Fedora-based distributions:
 
-```sh
-sudo dnf install gtk3 python3-gobject gdbm
-```
+   ```sh
+   sudo dnf install gspell gtk4 libadwaita python3-gobject
+   ```
 
-#### Installing Recommended Runtime Dependencies
+ - On SUSE-based distributions:
 
-- On Debian/Ubuntu based distributions:
+   ```sh
+   sudo zypper install typelib-1_0-Gspell-1 typelib-1_0-Gtk-4_0 typelib-1_0-Adw-1 python312-gobject python312-gobject-cairo python312-gobject-Gdk
+   ```
 
-```sh
-sudo apt install gir1.2-appindicator3-0.1 gir1.2-gspell-1
-```
+ - On Alpine-based distributions:
 
-- On Redhat/Fedora based distributions:
-
-```sh
-sudo dnf install gspell libappindicator-gtk3
-```
+   ```sh
+   sudo apk add gspell gtk4.0 libadwaita py3-gobject3
+   ```
 
 #### Installing Build Dependencies
 
-- On Debian/Ubuntu based distributions:
+ - On Debian/Ubuntu-based distributions:
 
-```sh
-sudo apt install appstream gettext python3-setuptools
-```
+   ```sh
+   sudo apt install gettext python3-build python3-setuptools python3-wheel
+   ```
 
-- On Redhat/Fedora based distributions:
+ - On Redhat/Fedora-based distributions:
 
-```sh
-sudo dnf install appstream gettext python3-setuptools
-```
+   ```sh
+   sudo dnf install gettext python3-build python3-setuptools python3-wheel
+   ```
+
+ - On SUSE-based distributions:
+
+   ```sh
+   sudo zypper install gettext-tools python312-build python312-setuptools python312-wheel
+   ```
+
+ - On Alpine-based distributions:
+
+   ```sh
+   sudo apk add gettext py3-build py3-setuptools py3-wheel
+   ```
 
 #### Installing Test Dependencies
 
-- On Debian/Ubuntu based distributions:
+ - On Debian/Ubuntu-based distributions:
 
-```sh
-sudo apt install gir1.2-gtk-3.0 pylint3 python3-flake8 python3-gi
-```
+   ```sh
+   sudo apt install pylint3 python3-pycodestyle
+   ```
 
-- On Redhat/Fedora based distributions:
+ - On Redhat/Fedora-based distributions:
 
-```sh
-sudo dnf install gtk3 pylint python3-flake8 python3-gobject
-```
+   ```sh
+   sudo dnf install pylint python3-pycodestyle
+   ```
 
-#### Checking Python Version
+ - On SUSE-based distributions:
 
-To check that the Python version you are using is recent enough, use `python3 -V`.
+   ```sh
+   sudo zypper install python312-pylint python312-pycodestyle
+   ```
 
-```console
-% python3 -V
-Python 3.7.3
-```
+ - On Alpine-based distributions:
 
-### Windows
-See [PACKAGING.md](PACKAGING.md#windows)
+   ```sh
+   sudo apk add py3-pylint py3-pycodestyle
+   ```
+
+### Windows and macOS
+
+All required dependencies are included in the [Nicotine+ Windows Installer](DOWNLOADS.md#windows)
+and [Nicotine+ macOS Installer](DOWNLOADS.md#macos) official release packages,
+no additional steps are required by a regular user in order to install stable
+versions of Nicotine+.
+
+For developers who need to build packages with dependencies in a development
+environment, see [PACKAGING.md](PACKAGING.md).

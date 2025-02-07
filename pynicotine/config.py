@@ -1,10 +1,10 @@
-# COPYRIGHT (C) 2020-2021 Nicotine+ Team
+# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
 # COPYRIGHT (C) 2016-2017 Michael Labouebe <gfarmerfr@free.fr>
 # COPYRIGHT (C) 2016-2018 Mutnick <mutnick@techie.com>
-# COPYRIGHT (C) 2008-2011 Quinox <quinox@users.sf.net>
-# COPYRIGHT (C) 2009 Hedonist <ak@sensi.org>
-# COPYRIGHT (C) 2007 Gallows <g4ll0ws@gmail.com>
-# COPYRIGHT (C) 2006-2009 Daelstorm <daelstorm@gmail.com>
+# COPYRIGHT (C) 2008-2011 quinox <quinox@users.sf.net>
+# COPYRIGHT (C) 2009 hedonist <ak@sensi.org>
+# COPYRIGHT (C) 2007 gallows <g4ll0ws@gmail.com>
+# COPYRIGHT (C) 2006-2009 daelstorm <daelstorm@gmail.com>
 # COPYRIGHT (C) 2003-2004 Hyriand <hyriand@thegraveyard.org>
 # COPYRIGHT (C) 2001-2003 Alexander Kanavin
 #
@@ -24,21 +24,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""
-This module contains configuration classes for Nicotine.
-"""
-
-import configparser
 import os
 import sys
 
-from ast import literal_eval
 from collections import defaultdict
+
+from pynicotine.events import events
+from pynicotine.i18n import apply_translations
+from pynicotine.utils import encode_path
+from pynicotine.utils import load_file
+from pynicotine.utils import write_file_and_backup
 
 
 class Config:
-    """
-    This class holds configuration information and provides the
+    """This class holds configuration information and provides the
     following methods:
 
     need_config() - returns true if configuration information is incomplete
@@ -50,109 +49,129 @@ class Config:
     parameters.
     """
 
+    __slots__ = ("config_file_path", "data_folder_path", "config_loaded", "sections",
+                 "defaults", "removed_options", "_parser")
+
     def __init__(self):
 
-        config_dir, self.data_dir = self.get_user_directories()
-        self.filename = os.path.join(config_dir, "config")
-        self.plugin_dir = os.path.join(self.data_dir, "plugins")
-        self.version = "3.2.0.dev1"
-        self.python_version = sys.version
-        self.gtk_version = ""
+        config_folder_path, data_folder_path = self.get_user_folders()
+        self.set_config_file(os.path.join(config_folder_path, "config"))
+        self.set_data_folder(data_folder_path)
 
-        self.privileges_url = "https://www.slsknet.org/userlogin.php?username=%s"
-        self.portchecker_url = "http://tools.slsknet.org/porttest.php?port=%s"
-        self.issue_tracker_url = "https://github.com/nicotine-plus/nicotine-plus/issues"
-
-        self.parser = configparser.ConfigParser(strict=False, interpolation=None)
+        self.config_loaded = False
         self.sections = defaultdict(dict)
         self.defaults = {}
+        self.removed_options = {}
+        self._parser = None
 
     @staticmethod
-    def get_user_directories():
-        """ Returns a tuple:
-        - the config directory
-        - the data directory """
+    def get_user_folders():
+        """Returns a tuple:
+
+        - the config folder
+        - the data folder
+        """
 
         if sys.platform == "win32":
             try:
-                data_dir = os.path.join(os.environ['APPDATA'], 'nicotine')
+                data_folder_path = os.path.join(os.path.normpath(os.environ["APPDATA"]), "nicotine")
             except KeyError:
-                data_dir, _filename = os.path.split(sys.argv[0])
+                data_folder_path = os.path.dirname(sys.argv[0])
 
-            config_dir = os.path.join(data_dir, "config")
-            return config_dir, data_dir
+            config_folder_path = os.path.join(data_folder_path, "config")
+            return config_folder_path, data_folder_path
 
         home = os.path.expanduser("~")
+        legacy_folder_path = os.path.join(home, ".nicotine")
 
-        legacy_dir = os.path.join(home, '.nicotine')
-
-        if os.path.isdir(legacy_dir):
-            return legacy_dir, legacy_dir
+        if os.path.isdir(encode_path(legacy_folder_path)):
+            return legacy_folder_path, legacy_folder_path
 
         def xdg_path(xdg, default):
             path = os.environ.get(xdg)
+            path = path.split(":")[0] if path else default
 
-            path = path.split(':')[0] if path else default
+            return os.path.join(path, "nicotine")
 
-            return os.path.join(path, 'nicotine')
+        config_folder_path = xdg_path("XDG_CONFIG_HOME", os.path.join(home, ".config"))
+        data_folder_path = xdg_path("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
 
-        config_dir = xdg_path('XDG_CONFIG_HOME', os.path.join(home, '.config'))
-        data_dir = xdg_path('XDG_DATA_HOME', os.path.join(home, '.local', 'share'))
+        return config_folder_path, data_folder_path
 
-        return config_dir, data_dir
+    def set_config_file(self, file_path):
+        self.config_file_path = os.path.abspath(file_path)
+
+    def set_data_folder(self, folder_path):
+        self.data_folder_path = os.environ["NICOTINE_DATA_HOME"] = os.path.abspath(folder_path)
 
     def create_config_folder(self):
-        """ Create the folder for storing the config file in, if the folder
-        doesn't exist """
+        """Create the folder for storing the config file in, if the folder
+        doesn't exist."""
 
-        path, _filename = os.path.split(self.filename)
+        folder_path = os.path.dirname(self.config_file_path)
 
-        if not path:
+        if not folder_path:
             # Only file name specified, use current folder
             return True
 
-        try:
-            if not os.path.isdir(path):
-                os.makedirs(path)
+        folder_path_encoded = encode_path(folder_path)
 
-        except OSError as msg:
+        try:
+            if not os.path.isdir(folder_path_encoded):
+                os.makedirs(folder_path_encoded)
+
+        except OSError as error:
             from pynicotine.logfacility import log
 
             log.add(_("Can't create directory '%(path)s', reported error: %(error)s"),
-                    {'path': path, 'error': msg})
+                    {"path": folder_path, "error": error})
             return False
 
         return True
 
     def create_data_folder(self):
-        """ Create the folder for storing data in (aliases, shared files etc.),
-        if the folder doesn't exist """
+        """Create the folder for storing data in (shared files etc.), if the
+        folder doesn't exist."""
+
+        data_folder_path_encoded = encode_path(self.data_folder_path)
 
         try:
-            if not os.path.isdir(self.data_dir):
-                os.makedirs(self.data_dir)
+            if not os.path.isdir(data_folder_path_encoded):
+                os.makedirs(data_folder_path_encoded)
 
-        except OSError as msg:
+        except OSError as error:
             from pynicotine.logfacility import log
 
             log.add(_("Can't create directory '%(path)s', reported error: %(error)s"),
-                    {'path': self.data_dir, 'error': msg})
+                    {"path": self.data_folder_path, "error": error})
 
-    def load_config(self):
+    def load_config(self, isolated_mode=False):
 
-        from pynicotine.utils import load_file
+        if self.config_loaded:
+            return
 
-        log_dir = os.path.join(self.data_dir, "logs")
+        from configparser import ConfigParser
+
+        data_home_env = "${NICOTINE_DATA_HOME}"
+        log_folder_path = os.path.join(data_home_env, "logs")
+
+        # Resume/retry (6) action in isolated_mode mode, open in file manager (2) action otherwise
+        transfer_double_click_action = 6 if isolated_mode else 2
+
+        self._parser = ConfigParser(
+            strict=False, interpolation=None, delimiters=("=",),
+            comment_prefixes=None
+        )
         self.defaults = {
             "server": {
-                "server": ('server.slsknet.org', 2242),
-                "login": '',
-                "passw": '',
-                "interface": '',
+                "server": ("server.slsknet.org", 2242),
+                "login": "",
+                "passw": "",
+                "interface": "",
                 "ctcpmsgs": False,
                 "autosearch": [],
                 "autoreply": "",
-                "portrange": (2234, 2239),
+                "portrange": (2234, 2234),
                 "upnp": True,
                 "upnp_interval": 4,
                 "auto_connect_startup": True,
@@ -161,35 +180,31 @@ class Config:
                 "ignorelist": [],
                 "ipignorelist": {},
                 "ipblocklist": {},
-                "autojoin": ["nicotine"],
+                "autojoin": [],
                 "autoaway": 15,
                 "away": False,
-                "private_chatrooms": False,
-                "command_aliases": {}
+                "private_chatrooms": False
             },
-
             "transfers": {
-                "incompletedir": os.path.join(self.data_dir, 'incomplete'),
-                "downloaddir": os.path.join(self.data_dir, 'downloads'),
-                "uploaddir": os.path.join(self.data_dir, 'received'),
+                "incompletedir": os.path.join(data_home_env, "incomplete"),
+                "downloaddir": os.path.join(data_home_env, "downloads"),
+                "uploaddir": os.path.join(data_home_env, "received"),
                 "usernamesubfolders": False,
-                "sharedownloaddir": False,
                 "shared": [],
                 "buddyshared": [],
-                "uploadbandwidth": 10,
-                "uselimit": False,
-                "usealtlimits": False,
+                "trustedshared": [],
+                "uploadbandwidth": 50,
+                "use_upload_speed_limit": "unlimited",
                 "uploadlimit": 1000,
                 "uploadlimitalt": 100,
-                "downloadlimit": 0,
+                "use_download_speed_limit": "unlimited",
+                "downloadlimit": 1000,
                 "downloadlimitalt": 100,
                 "preferfriends": False,
                 "useupslots": False,
                 "uploadslots": 2,
                 "afterfinish": "",
                 "afterfolder": "",
-                "lock": True,
-                "reverseorder": False,
                 "fifoqueue": False,
                 "usecustomban": False,
                 "limitby": True,
@@ -198,42 +213,39 @@ class Config:
                 "customgeoblock": "Sorry, your country is blocked",
                 "queuelimit": 10000,
                 "filelimit": 100,
-                "friendsonly": False,
-                "buddysharestrustedonly": False,
+                "reveal_buddy_shares": False,
+                "reveal_trusted_shares": False,
                 "friendsnolimits": False,
-                "enablebuddyshares": False,
-                "enabletransferbuttons": True,
                 "groupdownloads": "folder_grouping",
                 "groupuploads": "folder_grouping",
                 "geoblock": False,
-                "geopanic": False,
                 "geoblockcc": [""],
-                "remotedownloads": True,
-                "uploadallowed": 2,
+                "remotedownloads": False,
+                "uploadallowed": 3,
                 "autoclear_downloads": False,
                 "autoclear_uploads": False,
-                "uploadsinsubdirs": True,
                 "rescanonstartup": True,
                 "enablefilters": False,
                 "downloadregexp": "",
                 "downloadfilters": [
+                    ["*.DS_Store", 1],
+                    ["*.exe", 1],
+                    ["*.msi", 1],
                     ["desktop.ini", 1],
-                    ["folder.jpg", 1],
-                    ["*.url", 1],
-                    ["thumbs.db", 1],
-                    ["albumart(_{........-....-....-....-............}_)?(_?(large|small))?\\.jpg", 0]
+                    ["Thumbs.db", 1]
                 ],
-                "download_doubleclick": 1,
-                "upload_doubleclick": 1,
+                "download_doubleclick": transfer_double_click_action,
+                "upload_doubleclick": transfer_double_click_action,
                 "downloadsexpanded": True,
                 "uploadsexpanded": True
             },
-
+            "userbrowse": {
+                "expand_folders": True
+            },
             "userinfo": {
                 "descr": "''",
                 "pic": ""
             },
-
             "words": {
                 "censored": [],
                 "autoreplaced": {
@@ -245,104 +257,93 @@ class Config:
                     "thier": "their",
                     "tihs": "this"
                 },
-                "censorfill": "*",
                 "censorwords": False,
                 "replacewords": False,
                 "tab": True,
-                "cycle": False,
                 "dropdown": False,
                 "characters": 3,
-                "roomnames": True,
+                "roomnames": False,
                 "buddies": True,
                 "roomusers": True,
-                "commands": True,
-                "aliases": True,
-                "onematch": False
+                "commands": True
             },
-
             "logging": {
                 "debug": False,
                 "debugmodes": [],
-                "debuglogsdir": os.path.join(log_dir, "debug"),
+                "debuglogsdir": os.path.join(log_folder_path, "debug"),
                 "logcollapsed": True,
-                "transferslogsdir": os.path.join(log_dir, "transfers"),
-                "rooms_timestamp": "%H:%M:%S",
-                "private_timestamp": "%Y-%m-%d %H:%M:%S",
-                "log_timestamp": "%Y-%m-%d %H:%M:%S",
-                "timestamps": True,
+                "transferslogsdir": os.path.join(log_folder_path, "transfers"),
+                "rooms_timestamp": "%X",
+                "private_timestamp": "%x %X",
+                "log_timestamp": "%x %X",
                 "privatechat": True,
                 "chatrooms": True,
                 "transfers": False,
                 "debug_file_output": False,
-                "roomlogsdir": os.path.join(log_dir, "rooms"),
-                "privatelogsdir": os.path.join(log_dir, "private"),
-                "readroomlogs": True,
-                "readroomlines": 15,
-                "readprivatelines": 15,
+                "roomlogsdir": os.path.join(log_folder_path, "rooms"),
+                "privatelogsdir": os.path.join(log_folder_path, "private"),
+                "readroomlines": 200,
+                "readprivatelines": 200,
+                "private_chats": [],
                 "rooms": []
             },
-
             "privatechat": {
                 "store": True,
                 "users": []
             },
-
             "columns": {
                 "file_search": {},
                 "download": {},
                 "upload": {},
                 "user_browse": {},
                 "buddy_list": {},
-                "chat_room": {},
-                "hideflags": False
+                "chat_room": {}
             },
-
             "searches": {
                 "expand_searches": True,
                 "group_searches": "folder_grouping",
-                "maxresults": 50,
-                "re_filter": False,
+                "maxresults": 300,
                 "enable_history": True,
                 "history": [],
                 "enablefilters": False,
                 "filters_visible": False,
-                "defilter": ["", "", "", "", 0, ""],
+                "defilter": ["", "", "", "", 0, "", ""],
                 "filtercc": [],
                 "filterin": [],
                 "filterout": [],
                 "filtersize": [],
                 "filterbr": [],
                 "filtertype": [],
+                "filterlength": [],
                 "search_results": True,
-                "max_displayed_results": 1500,
+                "max_displayed_results": 2500,
                 "min_search_chars": 3,
-                "remove_special_chars": True
+                "private_search_results": False
             },
-
             "ui": {
+                "language": "",
                 "dark_mode": False,
                 "header_bar": True,
                 "icontheme": "",
-                "chatme": "#908e8b",
+                "chatme": "#908E8B",
                 "chatremote": "",
                 "chatlocal": "",
-                "chathilite": "#5288ce",
-                "urlcolor": "#5288ce",
-                "useronline": "#16bb5c",
-                "useraway": "#c9ae13",
-                "useroffline": "#e04f5e",
+                "chatcommand": "#908E8B",
+                "chathilite": "#5288CE",
+                "urlcolor": "#5288CE",
+                "useronline": "#16BB5C",
+                "useraway": "#C9AE13",
+                "useroffline": "#E04F5E",
                 "usernamehotspots": True,
                 "usernamestyle": "bold",
                 "textbg": "",
                 "search": "",
-                "searchq": "GREY",
                 "inputcolor": "",
                 "spellcheck": True,
                 "exitdialog": 1,
-                "notexists": True,
                 "tab_default": "",
-                "tab_hilite": "#497ec2",
-                "tab_changed": "#497ec2",
+                "tab_hilite": "#497EC2",
+                "tab_changed": "#497EC2",
                 "tab_select_previous": True,
                 "tabmain": "Top",
                 "tabrooms": "Top",
@@ -350,17 +351,9 @@ class Config:
                 "tabinfo": "Top",
                 "tabbrowse": "Top",
                 "tabsearch": "Top",
-                "tab_status_icons": True,
-                "labelmain": 0,
-                "labelrooms": 0,
-                "labelprivate": 0,
-                "labelinfo": 0,
-                "labelbrowse": 0,
-                "labelsearch": 0,
-                "decimalsep": ",",
                 "globalfont": "",
+                "textviewfont": "",
                 "chatfont": "",
-                "roomlistcollapsed": False,
                 "tabclosers": True,
                 "searchfont": "",
                 "listfont": "",
@@ -388,7 +381,6 @@ class Config:
                     "chatrooms",
                     "interests"
                 ],
-                "showaway": False,
                 "buddylistinchatrooms": "tab",
                 "trayicon": True,
                 "startup_hidden": False,
@@ -397,59 +389,44 @@ class Config:
                 "speechprivate": "User %(user)s told you: %(message)s",
                 "speechrooms": "In room %(room)s, user %(user)s said: %(message)s",
                 "speechcommand": "flite -t $",
-                "width": 1000,
+                "width": 800,
                 "height": 600,
                 "xposition": -1,
                 "yposition": -1,
                 "maximized": True,
-                "urgencyhint": True,
-                "private_search_results": False,
-                "private_shares": False,
-                "file_path_tooltips": True,
-                "reverse_file_paths": True
+                "reverse_file_paths": True,
+                "file_size_unit": ""
             },
-
-            "private_rooms": {
-                "rooms": {}
-            },
-
             "urls": {
-                "urlcatching": True,
-                "protocols": {},
-                "humanizeurls": True
+                "protocols": {}
             },
-
             "interests": {
                 "likes": [],
                 "dislikes": []
             },
-
             "players": {
-                "default": "",
                 "npothercommand": "",
                 "npplayer": "mpris",
                 "npformatlist": [],
                 "npformat": ""
             },
-
             "notifications": {
                 "notification_window_title": True,
                 "notification_tab_colors": False,
-                "notification_tab_icons": True,
                 "notification_popup_sound": False,
                 "notification_popup_file": True,
                 "notification_popup_folder": True,
                 "notification_popup_private_message": True,
                 "notification_popup_chatroom": False,
-                "notification_popup_chatroom_mention": True
+                "notification_popup_chatroom_mention": True,
+                "notification_popup_wish": True
             },
-
             "plugins": {
                 "enable": True,
                 "enabled": []
             },
-
             "statistics": {
+                "since_timestamp": 0,
                 "started_downloads": 0,
                 "completed_downloads": 0,
                 "downloaded_size": 0,
@@ -459,101 +436,254 @@ class Config:
             }
         }
 
-        # Windows specific stuff
-        if sys.platform == "win32":
-            self.defaults['players']['npplayer'] = 'other'
-
-        # Initialize config with default values
-        for key, value in self.defaults.items():
-            self.sections[key] = value.copy()
+        self.removed_options = {
+            "transfers": (
+                "pmqueueddir",
+                "autoretry_downloads",
+                "shownotification",
+                "shownotificationperfolder",
+                "prioritize",
+                "sharedownloaddir",
+                "geopanic",
+                "enablebuddyshares",
+                "friendsonly",
+                "enabletransferbuttons",
+                "uselimit",
+                "usealtlimits",
+                "uploadsinsubdirs",
+                "reverseorder",
+                "lock",
+                "buddysharestrustedonly"
+            ),
+            "server": (
+                "lastportstatuscheck",
+                "serverlist",
+                "enc",
+                "fallbackencodings",
+                "roomencoding",
+                "userencoding",
+                "firewalled",
+                "command_aliases"
+            ),
+            "ui": (
+                "enabletrans",
+                "mozembed",
+                "open_in_mozembed",
+                "tooltips",
+                "transalpha",
+                "transfilter",
+                "transtint",
+                "soundenabled",
+                "soundtheme",
+                "soundcommand",
+                "tab_colors",
+                "tab_icons",
+                "searchoffline",
+                "chat_hidebuttons",
+                "tab_reorderable",
+                "private_search_results",
+                "private_shares",
+                "labelmain",
+                "labelrooms",
+                "labelprivate",
+                "labelinfo",
+                "labelbrowse",
+                "labelsearch",
+                "notexists",
+                "roomlistcollapsed",
+                "showaway",
+                "decimalsep",
+                "urgencyhint",
+                "tab_status_icons",
+                "file_path_tooltips",
+                "searchq"
+            ),
+            "columns": (
+                "downloads",
+                "uploads",
+                "search",
+                "search_widths",
+                "downloads_columns",
+                "downloads_widths",
+                "uploads_columns",
+                "uploads_widths",
+                "userbrowse",
+                "userbrowse_widths",
+                "userlist",
+                "userlist_widths",
+                "chatrooms",
+                "chatrooms_widths",
+                "download_columns",
+                "download_widths",
+                "upload_columns",
+                "upload_widths",
+                "filesearch_columns",
+                "filesearch_widths",
+                "hideflags"
+            ),
+            "searches": (
+                "distrib_timer",
+                "distrib_ignore",
+                "reopen_tabs",
+                "max_stored_results",
+                "re_filter",
+                "remove_special_chars"
+            ),
+            "userinfo": (
+                "descrutf8",
+            ),
+            "private_rooms": (
+                "enabled",
+                "rooms"
+            ),
+            "logging": (
+                "logsdir",
+                "timestamps",
+                "readroomlogs"
+            ),
+            "ticker": (
+                "default",
+                "rooms",
+                "hide"
+            ),
+            "language": (
+                "language",
+                "setlanguage"
+            ),
+            "urls": (
+                "urlcatching",
+                "humanizeurls"
+            ),
+            "notifications": (
+                "notification_tab_icons",
+            ),
+            "words": (
+                "cycle",
+                "onematch",
+                "aliases",
+                "censorfill"
+            ),
+            "players": (
+                "default",
+            )
+        }
 
         self.create_config_folder()
         self.create_data_folder()
 
-        load_file(self.filename, self.parse_config)
-
-        # Clean up old config options
-        self.remove_old_options()
+        load_file(self.config_file_path, self._parse_config)
 
         # Update config values from file
-        self.set_config()
+        self._set_config()
 
-        # Load command aliases from legacy file
-        try:
-            if not self.sections["server"]["command_aliases"] and os.path.exists(self.filename + ".alias"):
-                with open(self.filename + ".alias", 'rb') as file_handle:
-                    from pynicotine.utils import RestrictedUnpickler
-                    self.sections["server"]["command_aliases"] = RestrictedUnpickler(
-                        file_handle, encoding='utf-8').load()
+        language = self.sections["ui"]["language"]
 
-        except Exception:
-            return
-
-    def parse_config(self, filename):
-        """ Parses the config file """
-
-        try:
-            with open(filename, 'a+', encoding="utf-8") as file_handle:
-                file_handle.seek(0)
-                self.parser.read_file(file_handle)
-
-        except UnicodeDecodeError:
-            self.convert_config()
-            self.parse_config(filename)
-
-    def convert_config(self):
-        """ Converts the config to utf-8.
-        Mainly for upgrading Windows build. (22 July, 2020) """
-
-        try:
-            from chardet import detect
-
-        except ImportError:
-            print("Failed to convert config file to UTF-8. Please install python3-chardet and start Nicotine+ again.")
-            sys.exit()
-
-        os.rename(self.filename, self.filename + ".conv")
-
-        with open(self.filename + ".conv", 'rb') as file_handle:
-            rawdata = file_handle.read()
-
-        from_encoding = detect(rawdata)['encoding']
-
-        with open(self.filename + ".conv", 'r', encoding=from_encoding) as file_read:
-            with open(self.filename, 'w', encoding="utf-8") as file_write:
-                for line in file_read:
-                    file_write.write(line[:-1] + '\r\n')
-
-        os.remove(self.filename + ".conv")
-
-    def need_config(self):
-
-        # Check if we have specified a username or password
-        if not self.sections["server"]["login"] or not self.sections["server"]["passw"]:
-            return True
-
-        return False
-
-    def set_config(self):
-        """ Set config values parsed from file earlier """
+        if language:
+            apply_translations(language)
 
         from pynicotine.logfacility import log
+        log.init_log_levels()
+        log.update_folder_paths()
+        log.add_debug("Using configuration: %s", self.config_file_path)
 
-        for i in self.parser.sections():
-            for j, val in self.parser.items(i, raw=True):
+        events.connect("quit", self._quit)
 
-                # Check if config section exists in defaults
-                if i not in self.defaults:
-                    log.add(_("Unknown config section '%s'"), i)
+    def need_config(self):
+        # Check if we have specified a username or password
+        return not self.sections["server"]["login"] or not self.sections["server"]["passw"]
 
-                # Check if config option exists in defaults
-                elif j not in self.defaults[i] and i != "plugins" and j != "filter":
-                    log.add(_("Unknown config option '%(option)s' in section '%(section)s'"),
-                            {'option': j, 'section': i})
+    def _parse_config(self, file_path):
+        """Parses the config file."""
+
+        with open(encode_path(file_path), "a+", encoding="utf-8") as file_handle:
+            file_handle.seek(0)
+            self._parser.read_file(file_handle)
+
+    def _migrate_config(self):
+
+        # Map legacy folder/user grouping modes (3.1.0)
+        for section, option in (
+            ("searches", "group_searches"),
+            ("transfers", "groupdownloads"),
+            ("transfers", "groupuploads")
+        ):
+            mode = self.sections[section].get(option, "folder_grouping")
+
+            if mode == "0":
+                mode = "ungrouped"
+
+            elif mode == "1":
+                mode = "folder_grouping"
+
+            elif mode == "2":
+                mode = "user_grouping"
+
+            self.sections[section][option] = mode
+
+        # Convert special download folder share to regular share
+        if self.sections["transfers"].get("sharedownloaddir", False):
+            shares = self.sections["transfers"]["shared"]
+            virtual_name = "Downloaded"
+            shared_folder = (virtual_name, self.sections["transfers"]["downloaddir"])
+
+            if shared_folder not in shares and virtual_name not in (x[0] for x in shares):
+                shares.append(shared_folder)
+
+        # Migrate download/upload speed limit preference (3.3.0)
+        if "uselimit" in self.sections["transfers"] or "usealtlimits" in self.sections["transfers"]:
+            for option, use_primary_speed_limit in (
+                ("use_download_speed_limit", self.sections["transfers"].get("downloadlimit", 0) > 0),
+                ("use_upload_speed_limit", self.sections["transfers"].get("uselimit", False))
+            ):
+                if self.sections["transfers"].get("usealtlimits", False):
+                    use_speed_limit = "alternative"
+
+                elif use_primary_speed_limit:
+                    use_speed_limit = "primary"
 
                 else:
-                    """ Attempt to get the default value for a config option. If there's no default
-                    value, it's a custom option from a plugin, so no checks are needed. """
+                    use_speed_limit = "unlimited"
+
+                self.sections["transfers"][option] = use_speed_limit
+
+        # Migrate old trusted buddy shares to new format (3.3.0)
+        if self.sections["transfers"].get("buddysharestrustedonly", False):
+            buddy_shares = self.sections["transfers"]["buddyshared"]
+
+            self.sections["transfers"]["trustedshared"] = buddy_shares[:]
+            buddy_shares.clear()
+
+        # Migrate old media player command to new format (3.3.0)
+        old_default_player = self.sections["players"].get("default", None)
+
+        if old_default_player:
+            self.sections["urls"]["protocols"]["audio"] = old_default_player
+
+        # Enable previously disabled header bar on macOS (3.3.0)
+        if sys.platform == "darwin" and old_default_player is not None:
+            self.sections["ui"]["header_bar"] = True
+
+    def _set_config(self):
+        """Set config values parsed from file earlier."""
+
+        from ast import literal_eval
+        from pynicotine.logfacility import log
+
+        for i in self._parser.sections():
+            for j, val in self._parser.items(i, raw=True):
+
+                # Check if config section exists in defaults
+                if i not in self.defaults and i not in self.removed_options:
+                    log.add_debug("Unknown config section '%s'", i)
+
+                # Check if config option exists in defaults
+                elif (j not in self.defaults.get(i, {}) and j not in self.removed_options.get(i, {})
+                        and i != "plugins" and j != "filter"):
+                    log.add_debug("Unknown config option '%s' in section '%s'", (j, i))
+
+                else:
+                    # Attempt to get the default value for a config option. If there's no default
+                    # value, it's a custom option from a plugin, so no checks are needed.
 
                     try:
                         default_val = self.defaults[i][j]
@@ -567,8 +697,8 @@ class Config:
                         self.sections[i][j] = val
                         continue
 
-                    """ Check that the value of a config option is of the same type as the default
-                    value. If that's not the case, reset the value. """
+                    # Check that the value of a config option is of the same type as the default
+                    # value. If that's not the case, reset the value.
 
                     try:
                         if not isinstance(default_val, str):
@@ -582,7 +712,7 @@ class Config:
                         if i != "plugins" and j != "filter":
                             if (isinstance(eval_val, type(default_val))
                                     or (isinstance(default_val, bool)
-                                        and isinstance(eval_val, int) and eval_val in (0, 1))):
+                                        and isinstance(eval_val, int) and eval_val in {0, 1})):
                                 # Value is valid
                                 pass
 
@@ -596,179 +726,104 @@ class Config:
                         self.sections[i][j] = default_val
 
                         log.add("Config error: Couldn't decode '%s' section '%s' value '%s', value has been reset", (
-                            (i[:120] + '..') if len(i) > 120 else i,
-                            (j[:120] + '..') if len(j) > 120 else j,
-                            (val[:120] + '..') if len(val) > 120 else val
+                            (i[:120] + "…") if len(i) > 120 else i,
+                            (j[:120] + "…") if len(j) > 120 else j,
+                            (val[:120] + "…") if len(val) > 120 else val
                         ))
 
-        server = self.sections["server"]
+        # Add any default options not present in the config file
+        for section, options in self.defaults.items():
+            if section not in self.sections:
+                self.sections[section] = {}
+
+            for option, value in options.items():
+                if option not in self.sections[section]:
+                    self.sections[section][option] = value
+
+        # Migrate old config values
+        self._migrate_config()
 
         # Check if server value is valid
-        if (len(server["server"]) != 2
-                or not isinstance(server["server"][0], str)
-                or not isinstance(server["server"][1], int)):
+        server_addr = self.sections["server"]["server"]
 
-            server["server"] = self.defaults["server"]["server"]
+        if (len(server_addr) != 2 or not isinstance(server_addr[0], str) or not isinstance(server_addr[1], int)):
+            self.sections["server"]["server"] = self.defaults["server"]["server"]
 
         # Check if port range value is valid
-        if (len(server["portrange"]) != 2
-                or not all(isinstance(i, int) for i in server["portrange"])):
+        port_range = self.sections["server"]["portrange"]
 
-            server["portrange"] = self.defaults["server"]["portrange"]
+        if (len(port_range) != 2 or not all(isinstance(i, int) for i in port_range)):
+            self.sections["server"]["portrange"] = self.defaults["server"]["portrange"]
 
-        else:
-            # Setting the port range in numerical order
-            server["portrange"] = (min(server["portrange"]), max(server["portrange"]))
+        self.config_loaded = True
 
-    def remove_old_options(self):
-
-        # Transition from 1.2.16 -> 1.4.0
-        # Do the cleanup early so we don't get the annoying
-        # 'Unknown config option ...' message
-        self.remove_old_option("transfers", "pmqueueddir")
-        self.remove_old_option("server", "lastportstatuscheck")
-        self.remove_old_option("server", "serverlist")
-        self.remove_old_option("userinfo", "descrutf8")
-        self.remove_old_option("ui", "enabletrans")
-        self.remove_old_option("ui", "mozembed")
-        self.remove_old_option("ui", "open_in_mozembed")
-        self.remove_old_option("ui", "tooltips")
-        self.remove_old_option("ui", "transalpha")
-        self.remove_old_option("ui", "transfilter")
-        self.remove_old_option("ui", "transtint")
-        self.remove_old_option("language", "language")
-        self.remove_old_option("language", "setlanguage")
-        self.remove_old_section("language")
-
-        # Transition from 1.4.1 -> 1.4.2
-        self.remove_old_option("columns", "downloads")
-        self.remove_old_option("columns", "uploads")
-
-        # Remove old encoding settings (1.4.3)
-        self.remove_old_option("server", "enc")
-        self.remove_old_option("server", "fallbackencodings")
-        self.remove_old_option("server", "roomencoding")
-        self.remove_old_option("server", "userencoding")
-
-        # Remove soundcommand config, replaced by GSound (1.4.3)
-        self.remove_old_option("ui", "soundcommand")
-
-        # Remove old column widths in preparation for "group by folder"-feature
-        self.remove_old_option("columns", "search")
-        self.remove_old_option("columns", "search_widths")
-        self.remove_old_option("columns", "downloads_columns")
-        self.remove_old_option("columns", "downloads_widths")
-        self.remove_old_option("columns", "uploads_columns")
-        self.remove_old_option("columns", "uploads_widths")
-
-        # Remove auto-retry failed downloads-option, this is now default behavior
-        self.remove_old_option("transfers", "autoretry_downloads")
-
-        # Remove old notification/sound settings
-        self.remove_old_option("transfers", "shownotification")
-        self.remove_old_option("transfers", "shownotificationperfolder")
-        self.remove_old_option("ui", "soundenabled")
-        self.remove_old_option("ui", "soundtheme")
-        self.remove_old_option("ui", "tab_colors")
-        self.remove_old_option("ui", "tab_icons")
-
-        # Remove dropped offline user text color in search results
-        self.remove_old_option("ui", "searchoffline")
-
-        # Seems to be superseded by ("server", "private_chatrooms")
-        self.remove_old_option("private_rooms", "enabled")
-
-        # Remove everything ticker-related, no longer necessary after the introduction of room walls
-        self.remove_old_section("ticker")
-
-        # Remove old log folder option, superseded by individual log folders for transfers and debug messages
-        self.remove_old_option("logging", "logsdir")
-
-        # Remove option to stop responding to searches for a certain time
-        self.remove_old_option("searches", "distrib_timer")
-        self.remove_old_option("searches", "distrib_ignore")
-
-        # Remove "I can receive direct connections"-option, it's redundant now
-        self.remove_old_option("server", "firewalled")
-
-        # Remove old column options
-        self.remove_old_option("columns", "userbrowse")
-        self.remove_old_option("columns", "userbrowse_widths")
-        self.remove_old_option("columns", "userlist")
-        self.remove_old_option("columns", "userlist_widths")
-        self.remove_old_option("columns", "chatrooms")
-        self.remove_old_option("columns", "chatrooms_widths")
-        self.remove_old_option("columns", "download_columns")
-        self.remove_old_option("columns", "download_widths")
-        self.remove_old_option("columns", "upload_columns")
-        self.remove_old_option("columns", "upload_widths")
-        self.remove_old_option("columns", "filesearch_columns")
-        self.remove_old_option("columns", "filesearch_widths")
-
-        # Remove option to prioritize sfv/md5 files when downloading
-        self.remove_old_option("transfers", "prioritize")
-
-        # Remove option to reopen closed search tabs when new results come in
-        self.remove_old_option("searches", "reopen_tabs")
-
-        # Remove option to toggle chatroom arrow buttons, since they no longer exist
-        self.remove_old_option("ui", "chat_hidebuttons")
-
-        # Remove max stored search results, only visible search result limit is used now
-        self.remove_old_option("searches", "max_stored_results")
-
-        # Remove option to specify if tabs are reorderable, since there's no clear advantage
-        self.remove_old_option("ui", "tab_reorderable")
-
-    def remove_old_option(self, section, option):
-
-        if section in self.parser.sections() and option in self.parser.options(section):
-            self.parser.remove_option(section, option)
-
-    def remove_old_section(self, section):
-
-        if section in self.parser.sections():
-            self.parser.remove_section(section)
-
-    def write_config_callback(self, filename):
-        self.parser.write(filename)
+    def _write_config_callback(self, file_path):
+        self._parser.write(file_path)
 
     def write_configuration(self):
 
-        for i in self.sections:
-            if not self.parser.has_section(i):
-                self.parser.add_section(i)
+        if not self.config_loaded:
+            return
 
-            for j in self.sections[i]:
-                self.parser.set(i, j, str(self.sections[i][j]))
+        # Write new config options to file
+        for section, options in self.sections.items():
+            if not self._parser.has_section(section):
+                self._parser.add_section(section)
+
+            for option, value in options.items():
+                if value is None:
+                    value = ""
+
+                self._parser.set(section, option, str(value))
+
+        # Remove legacy config options
+        for section, options in self.removed_options.items():
+            if not self._parser.has_section(section):
+                continue
+
+            for option in options:
+                self._parser.remove_option(section, option)
+
+            if not self._parser.options(section):
+                self._parser.remove_section(section)
 
         if not self.create_config_folder():
             return
 
-        from pynicotine.utils import write_file_and_backup
-        write_file_and_backup(self.filename, self.write_config_callback, protect=True)
+        write_file_and_backup(self.config_file_path, self._write_config_callback, protect=True)
 
-    def write_config_backup(self, filename):
+    def write_config_backup(self, file_path):
 
-        if not filename.endswith(".tar.bz2"):
-            filename += ".tar.bz2"
+        from pynicotine.logfacility import log
+
+        if not file_path.endswith(".tar.bz2"):
+            file_path += ".tar.bz2"
+
+        file_path_encoded = encode_path(file_path)
 
         try:
-            if os.path.exists(filename):
-                raise FileExistsError("File %s exists" % filename)
+            if os.path.exists(file_path_encoded):
+                raise FileExistsError(f"File {file_path} exists")
 
             import tarfile
-            with tarfile.open(filename, "w:bz2") as tar:
-                if not os.path.exists(self.filename):
+            with tarfile.open(file_path_encoded, "w:bz2") as tar:
+                if not os.path.exists(file_path_encoded):
                     raise FileNotFoundError("Config file missing")
 
-                tar.add(self.filename)
+                tar.add(self.config_file_path)
 
         except Exception as error:
-            print(error)
-            return (True, "Cannot write backup archive: %s" % error)
+            log.add(_("Error backing up config: %s"), error)
+            return
 
-        return (False, filename)
+        log.add(_("Config backed up to: %s"), file_path)
+
+    def _quit(self):
+
+        if self._parser is not None:
+            self._parser.clear()
+
+        self.config_loaded = False
 
 
 config = Config()

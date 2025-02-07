@@ -1,15 +1,19 @@
 # This file is responsible for including all necessary files in the source distribution
-# https://docs.python.org/3/distutils/sourcedist.html
+# https://packaging.python.org/en/latest/guides/using-manifest-in/
 
+include *.md
 recursive-include data *.in
+recursive-include data *.py
+recursive-include doc *
 recursive-include po *
 recursive-include pynicotine *
-recursive-include test *
 
+exclude 404.md
+recursive-exclude * *.appdata.xml
+recursive-exclude * *.dbn
 recursive-exclude * *.desktop
-recursive-exclude * *.metainfo.xml
 recursive-exclude * *.mo
+recursive-exclude * *.old
 recursive-exclude * *.pyc
-recursive-exclude test *.db
-recursive-exclude test *.old
-recursive-exclude test temp_config*
+recursive-exclude * *.wav
+recursive-exclude * temp_config*
